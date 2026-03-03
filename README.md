@@ -4,6 +4,8 @@ Fast, keyboard-driven TUI for managing git worktrees, tmux sessions, and AI agen
 
 ![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+<img width="958" height="922" alt="image" src="https://github.com/user-attachments/assets/06bd28c3-0e6b-4a44-a4d4-3b34605effbb" />
+
 
 ## Why Blink?
 
