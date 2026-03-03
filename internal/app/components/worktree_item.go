@@ -45,8 +45,13 @@ func WorktreeItem(wt models.Worktree, selected bool, t *theme.Theme, width int) 
 		statusStr = warn.Render(" " + wt.Status.StatusLine())
 	}
 
-	// Session/agent indicators as compact badges
+	// Worktree type + session/agent indicators as compact badges
 	badges := ""
+	if wt.IsMain {
+		badges += muted.Render(" [b]")
+	} else {
+		badges += muted.Render(" [w]")
+	}
 	if wt.Status.TmuxSession != "" {
 		badges += success.Render(" [S]")
 	}

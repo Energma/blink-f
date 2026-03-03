@@ -89,6 +89,13 @@ func LaunchInSession(ctx context.Context, tmuxSvc *tmux.Service, provider Provid
 	return exec.CommandContext(ctx, "tmux", args...).Run()
 }
 
+// LaunchInSplitSession launches an agent in a new tmux session with a
+// horizontal split: top pane runs the agent, bottom pane is a shell.
+func LaunchInSplitSession(ctx context.Context, tmuxSvc *tmux.Service, provider Provider, sessionName, workDir string) error {
+	cmdStr := provider.CommandString(workDir)
+	return tmuxSvc.CreateAgentSplitSession(ctx, sessionName, workDir, cmdStr)
+}
+
 // LaunchDirect launches an agent directly (no tmux), blocking.
 func LaunchDirect(ctx context.Context, provider Provider, workDir string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, provider.Command(), provider.Args()...)
