@@ -1,6 +1,10 @@
 package app
 
-import "github.com/Energma/blink-f/internal/models"
+import (
+	"os/exec"
+
+	"github.com/Energma/blink-f/internal/models"
+)
 
 // --- Git operation results ---
 
@@ -67,11 +71,16 @@ type tmuxSessionKilledMsg struct {
 // --- Agent operations ---
 
 type agentLaunchedMsg struct {
-	provider  string
-	worktree  string
-	sessionID string
-	err       error
+	provider     string
+	worktree     string
+	sessionID    string
+	shouldAttach bool
+	directCmd    *exec.Cmd
+	err          error
 }
+
+// agentSessionReturnedMsg is sent when the user returns from an agent tmux session.
+type agentSessionReturnedMsg struct{}
 
 // --- Detail loading ---
 
