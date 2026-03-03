@@ -21,13 +21,13 @@ No more getting lost.
 ## Install
 
 ```bash
-go install github.com/energma-dev/blink/cmd/blink@latest
+go install github.com/Energma/blink-f/cmd/blink@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/energma-dev/blink.git
+git clone https://github.com/Energma/blink-f.git
 cd blink
 make build
 ```
