@@ -1,4 +1,4 @@
-module github.com/energma-dev/blink
+module github.com/Energma/blink-f
 
 go 1.25.6
 

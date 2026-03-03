@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/energma-dev/blink/internal/models"
+	"github.com/Energma/blink-f/internal/models"
 )
 
 // Commit stages all changes and commits with the given message.

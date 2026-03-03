@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/energma-dev/blink/internal/models"
+	"github.com/Energma/blink-f/internal/models"
 )
 
 // Status returns the worktree status for the given directory.

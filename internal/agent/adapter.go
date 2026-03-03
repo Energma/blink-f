@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/energma-dev/blink/internal/config"
-	"github.com/energma-dev/blink/internal/tmux"
+	"github.com/Energma/blink-f/internal/config"
+	"github.com/Energma/blink-f/internal/tmux"
 )
 
 // Provider defines how to launch an AI agent tool.

@@ -3,7 +3,7 @@ package components
 import (
 	"testing"
 
-	"github.com/energma-dev/blink/internal/models"
+	"github.com/Energma/blink-f/internal/models"
 	"github.com/stretchr/testify/assert"
 )
 
