@@ -10,9 +10,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/energma-dev/blink/internal/agent"
-	"github.com/energma-dev/blink/internal/models"
-	"github.com/energma-dev/blink/internal/tmux"
+	"github.com/Energma/blink-f/internal/agent"
+	"github.com/Energma/blink-f/internal/models"
+	"github.com/Energma/blink-f/internal/tmux"
 )
 
 func (m *Model) loadWorktreesCmd() tea.Cmd {

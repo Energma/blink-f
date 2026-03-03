@@ -9,15 +9,15 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/energma-dev/blink/internal/agent"
-	"github.com/energma-dev/blink/internal/app/components"
-	"github.com/energma-dev/blink/internal/app/screen"
-	"github.com/energma-dev/blink/internal/app/views"
-	"github.com/energma-dev/blink/internal/config"
-	"github.com/energma-dev/blink/internal/git"
-	"github.com/energma-dev/blink/internal/models"
-	"github.com/energma-dev/blink/internal/theme"
-	"github.com/energma-dev/blink/internal/tmux"
+	"github.com/Energma/blink-f/internal/agent"
+	"github.com/Energma/blink-f/internal/app/components"
+	"github.com/Energma/blink-f/internal/app/screen"
+	"github.com/Energma/blink-f/internal/app/views"
+	"github.com/Energma/blink-f/internal/config"
+	"github.com/Energma/blink-f/internal/git"
+	"github.com/Energma/blink-f/internal/models"
+	"github.com/Energma/blink-f/internal/theme"
+	"github.com/Energma/blink-f/internal/tmux"
 )
 
 // Model is the root BubbleTea model.

@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/energma-dev/blink/internal/theme"
+	"github.com/Energma/blink-f/internal/theme"
 	"charm.land/lipgloss/v2"
 )
 

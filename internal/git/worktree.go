@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/energma-dev/blink/internal/models"
+	"github.com/Energma/blink-f/internal/models"
 )
 
 // ListWorktrees returns all worktrees for the repo at repoDir.

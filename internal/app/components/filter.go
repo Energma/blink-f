@@ -3,7 +3,7 @@ package components
 import (
 	"strings"
 
-	"github.com/energma-dev/blink/internal/models"
+	"github.com/Energma/blink-f/internal/models"
 )
 
 // FilterWorktrees returns worktrees matching the query (fuzzy-ish).

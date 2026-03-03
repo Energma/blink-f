@@ -4,7 +4,7 @@
 Blink is a lightweight, keyboard-driven TUI for git worktree management
 with tmux integration and AI agent launching. Built by energma. Written in Go using BubbleTea v2.
 
-Module: `github.com/energma-dev/blink`
+Module: `github.com/Energma/blink-f`
 
 ## Build & Run
 ```bash

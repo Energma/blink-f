@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/energma-dev/blink/internal/config"
+	"github.com/Energma/blink-f/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 

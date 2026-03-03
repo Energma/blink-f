@@ -5,9 +5,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/energma-dev/blink/internal/app/screen"
-	"github.com/energma-dev/blink/internal/git"
-	"github.com/energma-dev/blink/internal/tmux"
+	"github.com/Energma/blink-f/internal/app/screen"
+	"github.com/Energma/blink-f/internal/git"
+	"github.com/Energma/blink-f/internal/tmux"
 )
 
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {

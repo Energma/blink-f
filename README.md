@@ -28,7 +28,7 @@ Or build from source:
 
 ```bash
 git clone https://github.com/Energma/blink-f.git
-cd blink
+cd blink-f
 make build
 ```
 
@@ -188,4 +188,4 @@ MIT
 
 ---
 
-Built by [energma](https://github.com/energma-dev)
+Built by [energma](https://github.com/Energma)

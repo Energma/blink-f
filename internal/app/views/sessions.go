@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/energma-dev/blink/internal/models"
-	"github.com/energma-dev/blink/internal/theme"
+	"github.com/Energma/blink-f/internal/models"
+	"github.com/Energma/blink-f/internal/theme"
 	"charm.land/lipgloss/v2"
 )
 

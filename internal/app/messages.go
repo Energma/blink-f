@@ -1,6 +1,6 @@
 package app
 
-import "github.com/energma-dev/blink/internal/models"
+import "github.com/Energma/blink-f/internal/models"
 
 // --- Git operation results ---
 

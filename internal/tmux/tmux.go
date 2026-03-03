@@ -4,7 +4,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/energma-dev/blink/internal/config"
+	"github.com/Energma/blink-f/internal/config"
 )
 
 // Service wraps tmux CLI operations.
