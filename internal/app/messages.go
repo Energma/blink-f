@@ -47,13 +47,6 @@ type commitFilesLoadedMsg struct {
 	err   error
 }
 
-// --- Repo operations ---
-
-type reposLoadedMsg struct {
-	repos []models.Repo
-	err   error
-}
-
 // --- tmux operations ---
 
 type tmuxAvailableMsg struct {
@@ -85,7 +78,6 @@ type agentLaunchedMsg struct {
 type detailLoadedMsg struct {
 	files    []string
 	diffStat string
-	err      error
 }
 
 // --- General ---

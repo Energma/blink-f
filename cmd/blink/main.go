@@ -294,7 +294,7 @@ func cleanWorktrees(ctx context.Context, cmd *cli.Command) error {
 	fmt.Print("\nRemove these worktrees? [y/N] ")
 
 	var answer string
-	fmt.Scanln(&answer)
+	_, _ = fmt.Scanln(&answer)
 	if answer != "y" && answer != "Y" {
 		fmt.Println("Cancelled.")
 		return nil

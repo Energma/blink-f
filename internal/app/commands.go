@@ -74,7 +74,7 @@ func (m *Model) createWorktreeCmd(branch, baseBranch string) tea.Cmd {
 		// Auto-create tmux session
 		if m.cfg.Tmux.AutoSession && m.tmux.IsAvailable() {
 			repoName := filepath.Base(dir)
-			m.tmux.EnsureSession(ctx, repoName, branch, wt.Path)
+			_, _ = m.tmux.EnsureSession(ctx, repoName, branch, wt.Path)
 		}
 
 		// Auto-symlinks
@@ -247,7 +247,7 @@ func (m *Model) launchEditorCmd(dir string) tea.Cmd {
 			return errMsg{err: fmt.Errorf("editor: %w", err)}
 		}
 		// Don't wait — editor runs independently
-		go c.Wait()
+		go func() { _ = c.Wait() }()
 		return statusMsg("Opened " + cmd + " in " + filepath.Base(dir))
 	}
 }
