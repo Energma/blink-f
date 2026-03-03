@@ -182,22 +182,32 @@ func (m *Model) launchAgentCmd(providerName string) tea.Cmd {
 			return agentLaunchedMsg{err: err}
 		}
 
-		var sessionID string
-		if tmux.InsideTmux() {
-			err = agent.LaunchInPopup(ctx, m.tmux, p, wt.Path)
-			sessionID = "popup"
-		} else if m.tmux.IsAvailable() {
-			sessionID = tmux.SessionNameForWorktree(filepath.Base(wt.RepoDir), wt.Branch) + "-agent"
-			err = agent.LaunchInSession(ctx, m.tmux, p, sessionID, wt.Path)
-		} else {
-			err = fmt.Errorf("tmux required for agent launch")
+		// No tmux: suspend TUI and run agent directly.
+		if !m.tmux.IsAvailable() {
+			cmd := agent.LaunchDirect(ctx, p, wt.Path)
+			return agentLaunchedMsg{
+				provider:  name,
+				worktree:  wt.Branch,
+				directCmd: cmd,
+			}
+		}
+
+		sessionID := tmux.SessionNameForWorktree(filepath.Base(wt.RepoDir), wt.Branch) + "-agent"
+
+		if err = agent.LaunchInSplitSession(ctx, m.tmux, p, sessionID, wt.Path); err != nil {
+			return agentLaunchedMsg{err: err}
+		}
+
+		insideTmux := tmux.InsideTmux()
+		if insideTmux {
+			_ = m.tmux.SwitchSession(ctx, sessionID)
 		}
 
 		return agentLaunchedMsg{
-			provider:  name,
-			worktree:  wt.Branch,
-			sessionID: sessionID,
-			err:       err,
+			provider:     name,
+			worktree:     wt.Branch,
+			sessionID:    sessionID,
+			shouldAttach: !insideTmux,
 		}
 	}
 }

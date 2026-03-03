@@ -99,6 +99,14 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.agentCursor = 0
 		m.screenMgr.Push(screen.AgentSelect)
 
+	case "Q":
+		// Kill agent session for selected worktree
+		if wt := m.selectedWorktree(); wt != nil {
+			if sid, ok := m.agentSessions[wt.Branch]; ok {
+				return m, m.killSessionCmd(sid)
+			}
+		}
+
 	case "c":
 		m.commitType = 0
 		m.commitScope = ""
