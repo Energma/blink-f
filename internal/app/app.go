@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -252,15 +253,35 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentLaunchedMsg:
 		if msg.err != nil {
 			m.errText = msg.err.Error()
-		} else if msg.provider != "" {
+			m.screenMgr.Pop()
+			return m, tea.Batch(m.checkTmuxCmd(), m.clearStatusCmd())
+		}
+		if msg.provider != "" {
 			m.statusText = "Launched " + msg.provider + " in " + msg.worktree
-			// Track agent session
 			if msg.worktree != "" && msg.sessionID != "" {
 				m.agentSessions[msg.worktree] = msg.sessionID
 			}
 		}
 		m.screenMgr.Pop()
+		// Direct launch (no tmux): suspend TUI, run agent full-screen.
+		if msg.directCmd != nil {
+			return m, tea.ExecProcess(msg.directCmd, func(err error) tea.Msg {
+				return statusMsg("Agent exited")
+			})
+		}
+		// Outside tmux: attach to the split session.
+		if msg.shouldAttach && msg.sessionID != "" {
+			attachCmd := exec.Command("tmux", "attach-session", "-t", msg.sessionID)
+			return m, tea.ExecProcess(attachCmd, func(err error) tea.Msg {
+				// Session may have ended normally; ignore the error.
+				return agentSessionReturnedMsg{}
+			})
+		}
 		return m, tea.Batch(m.checkTmuxCmd(), m.clearStatusCmd())
+
+	case agentSessionReturnedMsg:
+		// Returned from an agent tmux session (detached or session ended).
+		return m, tea.Batch(m.checkTmuxCmd(), m.loadWorktreesCmd(), m.clearStatusCmd())
 
 	case tmuxAvailableMsg:
 		m.tmuxAvailable = msg.available

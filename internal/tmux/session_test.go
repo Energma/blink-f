@@ -13,12 +13,12 @@ func TestSessionNameForWorktree(t *testing.T) {
 		branch   string
 		want     string
 	}{
-		{"simple", "myapp", "main", "myapp:main"},
-		{"slash to hyphen", "myapp", "feature/login", "myapp:feature-login"},
-		{"dot to underscore", "my.app", "fix/v2.1", "my_app:fix-v2_1"},
-		{"multiple replacements", "repo", "release/1.0.0", "repo:release-1_0_0"},
-		{"no special chars", "simple", "simple", "simple:simple"},
-		{"nested slashes", "repo", "feat/ui/modal", "repo:feat-ui-modal"},
+		{"simple", "myapp", "main", "myapp_main"},
+		{"slash to hyphen", "myapp", "feature/login", "myapp_feature-login"},
+		{"dot to underscore", "my.app", "fix/v2.1", "my_app_fix-v2_1"},
+		{"multiple replacements", "repo", "release/1.0.0", "repo_release-1_0_0"},
+		{"no special chars", "simple", "simple", "simple_simple"},
+		{"nested slashes", "repo", "feat/ui/modal", "repo_feat-ui-modal"},
 	}
 
 	for _, tt := range tests {

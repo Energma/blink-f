@@ -46,6 +46,8 @@ func Help(t *theme.Theme, width, height int) string {
 		{"Sessions & Tools", []keyBinding{
 			{"S", "Manage tmux sessions"},
 			{"a", "Launch AI agent"},
+			{"Q", "Kill agent session"},
+			{"ctrl+q q", "Detach from session"},
 			{"e", "Open editor in worktree"},
 		}},
 		{"General", []keyBinding{
