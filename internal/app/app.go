@@ -91,7 +91,6 @@ type Model struct {
 	// Status
 	statusText string
 	errText    string
-	loading    bool
 }
 
 // New creates a new TUI Model.
