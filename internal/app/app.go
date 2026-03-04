@@ -83,6 +83,7 @@ type Model struct {
 	width         int
 	height        int
 	ready         bool
+	switching     bool // true while waiting for tmux switch/attach
 	tmuxAvailable bool
 	tmuxSessions  []string
 
@@ -251,6 +252,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.loadWorktreesCmd(), m.clearStatusCmd())
 
 	case agentLaunchedMsg:
+		m.switching = false
 		if msg.err != nil {
 			m.errText = msg.err.Error()
 			m.screenMgr.Pop()
@@ -269,18 +271,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return statusMsg("Agent exited")
 			})
 		}
-		// Outside tmux: attach to the split session.
-		if msg.shouldAttach && msg.sessionID != "" {
+		// Switch to agent tmux session.
+		if msg.sessionID != "" {
+			if tmux.InsideTmux() {
+				return m, m.switchTmuxClientCmd(msg.sessionID)
+			}
 			attachCmd := exec.Command("tmux", "attach-session", "-t", msg.sessionID)
 			return m, tea.ExecProcess(attachCmd, func(err error) tea.Msg {
-				// Session may have ended normally; ignore the error.
 				return agentSessionReturnedMsg{}
 			})
 		}
 		return m, tea.Batch(m.checkTmuxCmd(), m.clearStatusCmd())
 
 	case agentSessionReturnedMsg:
-		// Returned from an agent tmux session (detached or session ended).
+		m.switching = false
 		return m, tea.Batch(m.checkTmuxCmd(), m.loadWorktreesCmd(), m.clearStatusCmd())
 
 	case tmuxAvailableMsg:
@@ -293,10 +297,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tmuxSessionCreatedMsg:
 		if msg.err != nil {
+			m.switching = false
 			m.errText = msg.err.Error()
 			return m, m.clearStatusCmd()
 		}
-		return m, m.checkTmuxCmd()
+		if tmux.InsideTmux() {
+			// Non-blocking: tell tmux server to switch client
+			return m, m.switchTmuxClientCmd(msg.sessionName)
+		}
+		// Outside tmux: suspend TUI and attach to the session
+		attachCmd := exec.Command("tmux", "attach-session", "-t", msg.sessionName)
+		return m, tea.ExecProcess(attachCmd, func(err error) tea.Msg {
+			return tmuxSessionReturnedMsg{}
+		})
+
+	case tmuxSessionReturnedMsg:
+		m.switching = false
+		return m, tea.Batch(m.checkTmuxCmd(), m.loadWorktreesCmd())
 
 	case tmuxSessionKilledMsg:
 		if msg.err != nil {
@@ -335,11 +352,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case errMsg:
+		m.switching = false
 		if msg.err != nil {
 			m.errText = msg.err.Error()
 			return m, m.clearStatusCmd()
 		}
 		return m, nil
+
+	case tea.FocusMsg:
+		// Terminal regained focus (e.g. user switched back from another tmux session).
+		// Reset switching guard and refresh data so the TUI is never stuck.
+		m.switching = false
+		return m, tea.Batch(m.checkTmuxCmd(), m.loadWorktreesCmd())
 
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
@@ -422,6 +446,7 @@ func (m *Model) View() tea.View {
 
 	v := tea.NewView(rendered)
 	v.AltScreen = true
+	v.ReportFocus = true
 	return v
 }
 
