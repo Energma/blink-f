@@ -111,8 +111,22 @@ func (m *Model) switchWorktreeCmd(wt models.Worktree) tea.Cmd {
 		if err != nil {
 			return errMsg{err: err}
 		}
-		err = m.tmux.SwitchSession(ctx, name)
-		return tmuxSessionCreatedMsg{sessionName: name, err: err}
+		// Don't call SwitchSession here — the Update handler will use
+		// tea.ExecProcess (outside tmux) or switch-client (inside tmux)
+		// so the TUI is properly suspended.
+		return tmuxSessionCreatedMsg{sessionName: name, err: nil}
+	}
+}
+
+// switchTmuxClientCmd runs switch-client inside tmux (non-blocking).
+func (m *Model) switchTmuxClientCmd(name string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		err := exec.CommandContext(ctx, "tmux", "switch-client", "-t", name).Run()
+		if err != nil {
+			return errMsg{err: fmt.Errorf("switch to %s: %w", name, err)}
+		}
+		return tmuxSessionReturnedMsg{}
 	}
 }
 
@@ -198,16 +212,12 @@ func (m *Model) launchAgentCmd(providerName string) tea.Cmd {
 			return agentLaunchedMsg{err: err}
 		}
 
-		insideTmux := tmux.InsideTmux()
-		if insideTmux {
-			_ = m.tmux.SwitchSession(ctx, sessionID)
-		}
-
+		// Don't call SwitchSession here — the Update handler will use
+		// tea.ExecProcess (outside tmux) or switch-client (inside tmux).
 		return agentLaunchedMsg{
-			provider:     name,
-			worktree:     wt.Branch,
-			sessionID:    sessionID,
-			shouldAttach: !insideTmux,
+			provider:  name,
+			worktree:  wt.Branch,
+			sessionID: sessionID,
 		}
 	}
 }

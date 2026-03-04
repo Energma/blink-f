@@ -71,16 +71,18 @@ type tmuxSessionKilledMsg struct {
 // --- Agent operations ---
 
 type agentLaunchedMsg struct {
-	provider     string
-	worktree     string
-	sessionID    string
-	shouldAttach bool
-	directCmd    *exec.Cmd
-	err          error
+	provider  string
+	worktree  string
+	sessionID string
+	directCmd *exec.Cmd
+	err       error
 }
 
 // agentSessionReturnedMsg is sent when the user returns from an agent tmux session.
 type agentSessionReturnedMsg struct{}
+
+// tmuxSessionReturnedMsg is sent when the user returns from an attached tmux session.
+type tmuxSessionReturnedMsg struct{}
 
 // --- Detail loading ---
 

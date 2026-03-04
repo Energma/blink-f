@@ -32,11 +32,20 @@ func NewService() *Service {
 
 // run executes a git command in dir, bounded by semaphore.
 func (s *Service) run(ctx context.Context, dir string, args ...string) (string, error) {
-	s.sem <- struct{}{}
-	defer func() { <-s.sem }()
+	// Apply timeout covering both semaphore wait and command execution.
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.timeout)
+		defer cancel()
+	}
 
-	ctx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
+	// Acquire semaphore, respecting context cancellation.
+	select {
+	case s.sem <- struct{}{}:
+	case <-ctx.Done():
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), ctx.Err())
+	}
+	defer func() { <-s.sem }()
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	if dir != "" {

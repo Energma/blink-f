@@ -1,16 +1,18 @@
 package app
 
 import (
-	"context"
-
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Energma/blink-f/internal/app/screen"
 	"github.com/Energma/blink-f/internal/git"
-	"github.com/Energma/blink-f/internal/tmux"
 )
 
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Block all input while a tmux switch/attach is in progress.
+	if m.switching {
+		return m, nil
+	}
+
 	key := msg.String()
 
 	// Modal-specific handling first
@@ -59,6 +61,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if wt := m.selectedWorktree(); wt != nil {
 			if m.tmuxAvailable {
+				m.switching = true
+				m.statusText = "Switching..."
 				return m, m.switchWorktreeCmd(*wt)
 			}
 		}
@@ -287,6 +291,8 @@ func (m *Model) handleAgentKey(key string) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if m.agentCursor >= 0 && m.agentCursor < len(m.agentProviders) {
+			m.switching = true
+			m.statusText = "Launching agent..."
 			return m, m.launchAgentCmd(m.agentProviders[m.agentCursor])
 		}
 	}
@@ -393,6 +399,8 @@ func (m *Model) handleSessionsKey(key string) (tea.Model, tea.Cmd) {
 		// Attach to session (switch tmux)
 		if m.sessionCursor >= 0 && m.sessionCursor < len(m.sessionInfos) {
 			name := m.sessionInfos[m.sessionCursor].Name
+			m.switching = true
+			m.statusText = "Switching..."
 			m.screenMgr.Pop()
 			return m, m.attachSessionCmd(name)
 		}
@@ -446,13 +454,10 @@ func (m *Model) handleFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // attachSessionCmd switches to an existing tmux session by name.
+// The actual switch/attach is handled by the tmuxSessionCreatedMsg handler
+// in Update, which uses tea.ExecProcess when outside tmux.
 func (m *Model) attachSessionCmd(name string) tea.Cmd {
 	return func() tea.Msg {
-		if !tmux.InsideTmux() {
-			return errMsg{err: nil}
-		}
-		ctx := context.Background()
-		err := m.tmux.SwitchSession(ctx, name)
-		return tmuxSessionCreatedMsg{sessionName: name, err: err}
+		return tmuxSessionCreatedMsg{sessionName: name, err: nil}
 	}
 }
