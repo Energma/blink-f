@@ -89,6 +89,9 @@ type Model struct {
 	// Agent tracking: map worktree branch -> agent session name
 	agentSessions map[string]string
 
+	// Game
+	game gameState
+
 	// Status
 	statusText string
 	errText    string
@@ -164,6 +167,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ready = true
+		return m, nil
+
+	case gameTickMsg:
+		if m.screenMgr.Active() == screen.Game {
+			if m.game.Tick(clampInt(m.width-8, 40, 80)) {
+				return m, gameTickCmd()
+			}
+		}
 		return m, nil
 
 	case worktreesLoadedMsg:
@@ -376,6 +387,19 @@ func (m *Model) View() tea.View {
 		m.height,
 	)
 
+	// Full-screen game replaces content
+	if m.screenMgr.Active() == screen.Game {
+		gs := m.gameViewState()
+		gameContent := views.Game(gs, m.theme, m.width, m.height)
+		rendered := m.styles.App.
+			Width(m.width).
+			Height(m.height).
+			Render(gameContent)
+		v := tea.NewView(rendered)
+		v.AltScreen = true
+		return v
+	}
+
 	// Overlay modal if active
 	overlay := ""
 	switch m.screenMgr.Active() {
@@ -467,6 +491,33 @@ func (m *Model) enrichAgentStatus() {
 		_, hasAgent := m.agentSessions[wt.Branch]
 		m.worktrees[i].Status.AgentRunning = hasAgent
 	}
+}
+
+// gameViewState converts internal game state to the view's read-only snapshot.
+func (m *Model) gameViewState() views.GameState {
+	items := make([]views.GameItem, len(m.game.items))
+	for i, it := range m.game.items {
+		items[i] = views.GameItem{X: it.x, Y: it.y, Kind: int(it.kind)}
+	}
+	return views.GameState{
+		PlayerY:   m.game.playerY,
+		Items:     items,
+		Score:     m.game.score,
+		HighScore: m.game.highScore,
+		Orbs:      m.game.orbs,
+		GameOver:  m.game.gameOver,
+		Started:   m.game.started,
+	}
+}
+
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 func (m *Model) buildSessionInfos() {
