@@ -31,6 +31,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleDetailKey(key)
 	case screen.Sessions:
 		return m.handleSessionsKey(key)
+	case screen.Game:
+		return m.handleGameKey(key)
 	}
 
 	// Filter mode
@@ -147,6 +149,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.buildSessionInfos()
 		m.sessionCursor = 0
 		m.screenMgr.Push(screen.Sessions)
+
+	case "B":
+		// Easter egg: Blink Run mini-game
+		m.game = newGameState()
+		m.screenMgr.Push(screen.Game)
 
 	case "/":
 		m.filterMode = true
@@ -455,4 +462,14 @@ func (m *Model) attachSessionCmd(name string) tea.Cmd {
 		err := m.tmux.SwitchSession(ctx, name)
 		return tmuxSessionCreatedMsg{sessionName: name, err: err}
 	}
+}
+
+func (m *Model) handleGameKey(key string) (tea.Model, tea.Cmd) {
+	if key == "esc" {
+		m.screenMgr.Pop()
+		return m, nil
+	}
+	// Delegate all other keys to the game itself.
+	cmd := m.game.HandleKey(key)
+	return m, cmd
 }

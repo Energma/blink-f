@@ -15,6 +15,7 @@ const (
 	Sessions
 	Help
 	Filter
+	Game
 )
 
 func (t Type) String() string {
@@ -39,6 +40,8 @@ func (t Type) String() string {
 		return "help"
 	case Filter:
 		return "filter"
+	case Game:
+		return "game"
 	default:
 		return "none"
 	}
