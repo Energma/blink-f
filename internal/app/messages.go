@@ -3,6 +3,7 @@ package app
 import (
 	"os/exec"
 
+	"github.com/Energma/blink-f/internal/app/components"
 	"github.com/Energma/blink-f/internal/models"
 )
 
@@ -109,3 +110,11 @@ func (e errMsg) Error() string {
 type tickMsg struct{}
 
 type clearStatusMsg struct{}
+
+// --- File tree ---
+
+type dirListedMsg struct {
+	parentPath string
+	entries    []components.TreeNode
+	err        error
+}
