@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/Energma/blink-f/internal/agent"
 	"github.com/Energma/blink-f/internal/app/components"
@@ -19,6 +20,14 @@ import (
 	"github.com/Energma/blink-f/internal/models"
 	"github.com/Energma/blink-f/internal/theme"
 	"github.com/Energma/blink-f/internal/tmux"
+)
+
+// PaneID identifies which pane has focus.
+type PaneID int
+
+const (
+	PaneWorktrees PaneID = iota
+	PaneFileTree
 )
 
 // Model is the root BubbleTea model.
@@ -90,6 +99,14 @@ type Model struct {
 	// Agent tracking: map worktree branch -> agent session name
 	agentSessions map[string]string
 
+	// Dual pane state
+	activePane      PaneID
+	treeRoot        *components.TreeNode
+	treeFlatNodes   []*components.TreeNode
+	treeCursor      int
+	treeFilterMode  bool
+	treeFilterText  string
+
 	// Status
 	statusText string
 	errText    string
@@ -136,6 +153,14 @@ func New(cfg *config.Config) *Model {
 		}
 	}
 
+	// File tree root: parent of cwd, or home dir
+	treeRootPath := filepath.Dir(cwd)
+	if treeRootPath == "" {
+		home, _ := os.UserHomeDir()
+		treeRootPath = home
+	}
+	treeRoot := components.NewTreeRoot(treeRootPath)
+
 	return &Model{
 		git:           gitSvc,
 		tmux:          tmux.NewService(cfg),
@@ -146,12 +171,14 @@ func New(cfg *config.Config) *Model {
 		repos:         repos,
 		screenMgr:     screen.NewManager(),
 		agentSessions: make(map[string]string),
+		treeRoot:      treeRoot,
 	}
 }
 
 func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		m.checkTmuxCmd(),
+		listDirCmd(m.treeRoot.Path, 1),
 	}
 	if len(m.repos) > 0 {
 		cmds = append(cmds, m.loadWorktreesCmd())
@@ -365,6 +392,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.switching = false
 		return m, tea.Batch(m.checkTmuxCmd(), m.loadWorktreesCmd())
 
+	case dirListedMsg:
+		if msg.err != nil {
+			m.errText = "tree: " + msg.err.Error()
+			return m, m.clearStatusCmd()
+		}
+		node := components.FindNode(m.treeRoot, msg.parentPath)
+		if node != nil {
+			node.Children = msg.entries
+			node.Loaded = true
+			node.Expanded = true
+			m.treeFlatNodes = components.FlattenVisible(m.treeRoot)
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	}
@@ -388,17 +429,114 @@ func (m *Model) View() tea.View {
 	// Stats
 	stats := components.ComputeStats(m.worktrees)
 
-	// Main content = dashboard
-	content := views.Dashboard(
+	// Key hints
+	hints := components.KeyHints(m.theme, m.screenMgr.Active(), components.PaneID(m.activePane))
+
+	// Status bar
+	statusBar := components.StatusBar(
+		m.width, m.theme, repoName,
+		stats, m.tmuxAvailable,
+		m.screenMgr.Active(), m.statusText, m.errText,
+	)
+
+	// Calculate pane heights
+	// Reserve lines for hints + statusbar + padding
+	hintsHeight := 1
+	statusHeight := 1
+	padding := 2
+	reservedHeight := hintsHeight + statusHeight + padding
+	availableHeight := m.height - reservedHeight
+	if availableHeight < 10 {
+		availableHeight = 10
+	}
+
+	// 60/40 split
+	upperHeight := availableHeight * 60 / 100
+	lowerHeight := availableHeight - upperHeight
+
+	// Content height inside bordered panes (border takes 2 lines)
+	upperContentHeight := upperHeight - 2
+	lowerContentHeight := lowerHeight - 2
+	if upperContentHeight < 3 {
+		upperContentHeight = 3
+	}
+	if lowerContentHeight < 3 {
+		lowerContentHeight = 3
+	}
+
+	contentWidth := m.width - 4 // padding from App style + border
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+
+	// Upper pane: worktree dashboard
+	upperContent := views.Dashboard(
 		m.worktrees,
 		m.filteredIndices,
 		m.cursor,
 		m.filterText,
 		m.filterMode,
 		m.theme,
-		m.width,
-		m.height,
+		contentWidth,
+		upperContentHeight,
 	)
+
+	// Lower pane: file tree
+	var treeMatchIndices []int
+	if m.treeFilterText != "" {
+		treeMatchIndices = components.FilterFlatNodes(m.treeFlatNodes, m.treeFilterText)
+	}
+	lowerContent := views.FileTree(
+		m.treeFlatNodes,
+		m.treeCursor,
+		m.activePane == PaneFileTree,
+		m.treeFilterMode,
+		m.treeFilterText,
+		treeMatchIndices,
+		m.theme,
+		contentWidth,
+		lowerContentHeight,
+	)
+
+	// Border colors based on focus
+	upperBorderColor := m.theme.Border
+	lowerBorderColor := m.theme.Border
+	upperTitle := " Worktrees "
+	lowerTitle := " Browse: " + m.treeRoot.Path + " "
+	if m.activePane == PaneWorktrees {
+		upperBorderColor = m.theme.Primary
+	} else {
+		lowerBorderColor = m.theme.Primary
+	}
+
+	upperPane := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(upperBorderColor).
+		BorderTop(true).
+		BorderBottom(true).
+		BorderLeft(true).
+		BorderRight(true).
+		Width(m.width - 2).
+		Height(upperContentHeight).
+		Render(upperContent)
+
+	// Inject title into border
+	upperPane = injectBorderTitle(upperPane, upperTitle, m.theme, m.activePane == PaneWorktrees)
+
+	lowerPane := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lowerBorderColor).
+		BorderTop(true).
+		BorderBottom(true).
+		BorderLeft(true).
+		BorderRight(true).
+		Width(m.width - 2).
+		Height(lowerContentHeight).
+		Render(lowerContent)
+
+	lowerPane = injectBorderTitle(lowerPane, lowerTitle, m.theme, m.activePane == PaneFileTree)
+
+	content := lipgloss.JoinVertical(lipgloss.Left, upperPane, hints, lowerPane)
 
 	// Overlay modal if active
 	overlay := ""
@@ -424,16 +562,6 @@ func (m *Model) View() tea.View {
 		}
 	}
 
-	// Key hints
-	hints := components.KeyHints(m.theme, m.screenMgr.Active())
-
-	// Status bar
-	statusBar := components.StatusBar(
-		m.width, m.theme, repoName,
-		stats, m.tmuxAvailable,
-		m.screenMgr.Active(), m.statusText, m.errText,
-	)
-
 	// Compose
 	if overlay != "" {
 		content = content + "\n\n" + overlay
@@ -442,12 +570,40 @@ func (m *Model) View() tea.View {
 	rendered := m.styles.App.
 		Width(m.width).
 		Height(m.height).
-		Render(content + "\n\n" + hints + "\n" + statusBar)
+		Render(content + "\n" + statusBar)
 
 	v := tea.NewView(rendered)
 	v.AltScreen = true
 	v.ReportFocus = true
 	return v
+}
+
+// injectBorderTitle replaces the start of the top border line with a title.
+func injectBorderTitle(rendered, title string, t *theme.Theme, focused bool) string {
+	lines := strings.SplitN(rendered, "\n", 2)
+	if len(lines) < 2 {
+		return rendered
+	}
+
+	titleColor := t.TextDim
+	if focused {
+		titleColor = t.Primary
+	}
+	styledTitle := lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render(title)
+
+	// Replace characters after the first border rune
+	topLine := lines[0]
+	runes := []rune(topLine)
+	if len(runes) > 2 {
+		// Keep first rune (corner), insert title, continue border
+		titleWidth := len([]rune(title))
+		if titleWidth+2 < len(runes) {
+			newTop := string(runes[0:1]) + styledTitle + string(runes[1+titleWidth:])
+			return newTop + "\n" + lines[1]
+		}
+	}
+
+	return rendered
 }
 
 // --- Helper methods ---

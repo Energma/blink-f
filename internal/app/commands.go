@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Energma/blink-f/internal/agent"
+	"github.com/Energma/blink-f/internal/app/components"
 	"github.com/Energma/blink-f/internal/models"
 	"github.com/Energma/blink-f/internal/tmux"
 )
@@ -350,6 +351,14 @@ func createSymlinks(mainDir, worktreeDir string, symlinks []string) {
 		if fileExists(src) && !fileExists(dst) {
 			_ = symlink(src, dst)
 		}
+	}
+}
+
+// listDirCmd reads directory entries asynchronously for the file tree.
+func listDirCmd(parentPath string, depth int) tea.Cmd {
+	return func() tea.Msg {
+		entries, err := components.ReadDirEntries(parentPath, depth)
+		return dirListedMsg{parentPath: parentPath, entries: entries, err: err}
 	}
 }
 

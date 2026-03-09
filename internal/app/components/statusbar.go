@@ -87,8 +87,16 @@ func StatusBar(width int, t *theme.Theme, repoName string, stats Stats, tmuxAvai
 		Render(left + string(spaces) + right)
 }
 
+// PaneID mirrors the app.PaneID type for hint rendering.
+type PaneID int
+
+const (
+	PaneWorktrees PaneID = iota
+	PaneFileTree
+)
+
 // KeyHints renders context-sensitive keyboard hints.
-func KeyHints(t *theme.Theme, activeScreen screen.Type) string {
+func KeyHints(t *theme.Theme, activeScreen screen.Type, activePane PaneID) string {
 	dim := lipgloss.NewStyle().Foreground(t.TextDim)
 	key := lipgloss.NewStyle().Foreground(t.Secondary).Bold(true)
 
@@ -110,6 +118,17 @@ func KeyHints(t *theme.Theme, activeScreen screen.Type) string {
 	case screen.WorktreeDetail:
 		return dim.Render(key.Render("e") + " editor  " + key.Render("a") + " agent  " + key.Render("c") + " commit  " + key.Render("esc") + " back")
 	default:
+		if activePane == PaneFileTree {
+			return dim.Render(
+				key.Render("enter") + " select  " +
+					key.Render("l") + " expand  " +
+					key.Render("h") + " collapse  " +
+					key.Render("bs") + " up dir  " +
+					key.Render("f") + " find  " +
+					key.Render("ctrl+up") + " worktrees  " +
+					key.Render("?") + " help",
+			)
+		}
 		return dim.Render(
 			key.Render("n") + " new  " +
 				key.Render("enter") + " switch  " +
@@ -117,7 +136,7 @@ func KeyHints(t *theme.Theme, activeScreen screen.Type) string {
 				key.Render("e") + " editor  " +
 				key.Render("c") + " commit  " +
 				key.Render("p") + " push  " +
-				key.Render("S") + " sessions  " +
+				key.Render("ctrl+down") + " browse  " +
 				key.Render("?") + " help",
 		)
 	}
