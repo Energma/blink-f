@@ -310,13 +310,26 @@ func (m *Model) handleTreeFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "backspace":
 		if len(m.treeFilterText) > 0 {
 			m.treeFilterText = m.treeFilterText[:len(m.treeFilterText)-1]
+			m.treeFilterJumpToFirst()
 		}
 	default:
 		if len(key) == 1 && key[0] >= ' ' {
 			m.treeFilterText += key
+			m.treeFilterJumpToFirst()
 		}
 	}
 	return m, nil
+}
+
+// treeFilterJumpToFirst moves the cursor to the first matching node during live search.
+func (m *Model) treeFilterJumpToFirst() {
+	if m.treeFilterText == "" {
+		return
+	}
+	matches := components.FilterFlatNodes(m.treeFlatNodes, m.treeFilterText)
+	if len(matches) > 0 {
+		m.treeCursor = matches[0]
+	}
 }
 
 // treeNavigateUp re-roots the tree to the parent directory.

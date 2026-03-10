@@ -450,7 +450,10 @@ func (m *Model) View() tea.View {
 		availableHeight = 10
 	}
 
-	// 60/40 split
+	// Hide bottom pane when a modal overlay is active
+	hasOverlay := m.screenMgr.Active() != screen.None
+
+	// 60/40 split — upper pane keeps its size even with overlay
 	upperHeight := availableHeight * 60 / 100
 	lowerHeight := availableHeight - upperHeight
 
@@ -536,7 +539,12 @@ func (m *Model) View() tea.View {
 
 	lowerPane = injectBorderTitle(lowerPane, lowerTitle, m.theme, m.activePane == PaneFileTree)
 
-	content := lipgloss.JoinVertical(lipgloss.Left, upperPane, hints, lowerPane)
+	var content string
+	if hasOverlay {
+		content = lipgloss.JoinVertical(lipgloss.Left, upperPane, hints)
+	} else {
+		content = lipgloss.JoinVertical(lipgloss.Left, upperPane, hints, lowerPane)
+	}
 
 	// Overlay modal if active
 	overlay := ""
