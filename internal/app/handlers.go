@@ -114,7 +114,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.confirmMessage = "Delete worktree '" + wt.Branch + "'?"
 			capturedWt := *wt
 			m.confirmAction = func() tea.Cmd {
-				return m.deleteWorktreeCmd(capturedWt, false)
+				return m.deleteWorktreeCmd(capturedWt, true)
 			}
 			m.screenMgr.Push(screen.Confirm)
 		}
