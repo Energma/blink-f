@@ -67,6 +67,15 @@ func (s *Service) BranchList(ctx context.Context, dir string) ([]string, error) 
 	return lines, nil
 }
 
+// CheckoutBranch switches the working tree at dir to the given branch.
+func (s *Service) CheckoutBranch(ctx context.Context, dir, branch string) error {
+	_, err := s.run(ctx, dir, "checkout", branch)
+	if err != nil {
+		return fmt.Errorf("checkout %s: %w", branch, err)
+	}
+	return nil
+}
+
 // DiffStat returns a compact diff stat for the working directory.
 func (s *Service) DiffStat(ctx context.Context, dir string) (string, error) {
 	return s.run(ctx, dir, "diff", "--stat")

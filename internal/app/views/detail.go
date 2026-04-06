@@ -79,6 +79,7 @@ func Detail(wt models.Worktree, files []string, diffStat string, t *theme.Theme,
 			hKey.Render("a") + " agent  " +
 			hKey.Render("c") + " commit  " +
 			hKey.Render("p") + " push  " +
+			hKey.Render("b") + " branch  " +
 			hKey.Render("esc") + " back"))
 
 	modalWidth := 70

@@ -40,6 +40,7 @@ type TmuxConfig struct {
 	PopupWidth  string `yaml:"popup_width"`
 	PopupHeight string `yaml:"popup_height"`
 	Shell       string `yaml:"shell"`
+	EditorCmd   string `yaml:"-"` // set at runtime from Editor.Command
 }
 
 type WorktreeConfig struct {

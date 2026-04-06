@@ -11,7 +11,7 @@ import (
 )
 
 // Dashboard renders the main worktree list view.
-func Dashboard(worktrees []models.Worktree, filteredIndices []int, cursor int, filterText string, filterMode bool, t *theme.Theme, width, height int) string {
+func Dashboard(worktrees []models.Worktree, filteredIndices []int, cursor int, filterText string, filterMode bool, focused bool, paneHints string, t *theme.Theme, width, height int) string {
 	var b strings.Builder
 
 	// Header
@@ -90,14 +90,34 @@ func Dashboard(worktrees []models.Worktree, filteredIndices []int, cursor int, f
 	// Scroll indicator bottom
 	if end < len(filteredIndices) {
 		b.WriteString(lipgloss.NewStyle().Foreground(t.TextDim).Render(fmt.Sprintf("  ... %d more below", len(filteredIndices)-end)))
+		b.WriteString("\n")
+	}
+
+	// Pane action hints pinned to bottom
+	if focused && paneHints != "" {
+		// Pad to push hints to the bottom of the pane
+		usedLines := 3 // header + sep + current line
+		if filterMode {
+			usedLines++
+		}
+		listLines := end - start
+		usedLines += listLines
+		if start > 0 {
+			usedLines++
+		}
+		if end < len(filteredIndices) {
+			usedLines++
+		}
+		remaining := height - usedLines - 1
+		for i := 0; i < remaining; i++ {
+			b.WriteString("\n")
+		}
+		b.WriteString(lipgloss.NewStyle().Foreground(t.Border).
+			Render(strings.Repeat("─", min(width-2, 80))))
+		b.WriteString("\n")
+		b.WriteString(paneHints)
 	}
 
 	return b.String()
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
