@@ -95,49 +95,99 @@ const (
 	PaneFileTree
 )
 
-// KeyHints renders context-sensitive keyboard hints.
-func KeyHints(t *theme.Theme, activeScreen screen.Type, activePane PaneID) string {
-	dim := lipgloss.NewStyle().Foreground(t.TextDim)
-	key := lipgloss.NewStyle().Foreground(t.Secondary).Bold(true)
+// PaneHints returns the action hints to render inside a pane footer.
+func PaneHints(t *theme.Theme, pane PaneID) string {
+	k := lipgloss.NewStyle().Foreground(t.Secondary).Bold(true)
+	d := lipgloss.NewStyle().Foreground(t.TextDim)
+	sep := d.Render(" | ")
+
+	h := func(binding, action string) string {
+		return k.Render(binding) + " " + d.Render(action)
+	}
+
+	var parts []string
+	switch pane {
+	case PaneWorktrees:
+		parts = []string{
+			h("n", "new"),
+			h("b", "branch"),
+			h("d", "delete"),
+			h("D", "clean"),
+			sep,
+			h("c", "commit"),
+			h("p", "push"),
+			h("u", "pull"),
+			h("s", "stash"),
+			sep,
+			h("e", "editor"),
+			h("a", "agent"),
+		}
+	case PaneFileTree:
+		parts = []string{
+			h("enter/l", "open"),
+			h("h", "collapse"),
+			h("bs", "up dir"),
+			h("f", "find"),
+		}
+	}
+
+	line := ""
+	for _, p := range parts {
+		if p == sep {
+			line += sep
+		} else {
+			if line != "" && line[len(line)-1] != '|' {
+				line += "  "
+			}
+			line += p
+		}
+	}
+	return line
+}
+
+// NavHints returns the single-line navigation/global hints between panes.
+func NavHints(t *theme.Theme, activeScreen screen.Type, activePane PaneID) string {
+	k := lipgloss.NewStyle().Foreground(t.Secondary).Bold(true)
+	d := lipgloss.NewStyle().Foreground(t.TextDim)
+
+	h := func(binding, action string) string {
+		return k.Render(binding) + " " + d.Render(action)
+	}
+
+	join := func(parts ...string) string {
+		out := ""
+		for i, p := range parts {
+			if i > 0 {
+				out += "  "
+			}
+			out += p
+		}
+		return out
+	}
 
 	switch activeScreen {
 	case screen.WorktreeCreate:
-		return dim.Render(key.Render("enter") + " create  " + key.Render("esc") + " cancel")
+		return join(h("tab", "field"), h("C-b", "branches"), h("enter", "create"), h("esc", "cancel"))
+	case screen.BranchSelect:
+		return join(h("j/k", "move"), h("g/G", "top/bottom"), h("enter", "select"), h("esc", "cancel"))
 	case screen.Commit:
-		return dim.Render(key.Render("tab") + " next field  " + key.Render("enter") + " commit  " + key.Render("esc") + " cancel")
+		return join(h("tab", "field"), h("</>", "type"), h("enter", "commit"), h("esc", "cancel"))
 	case screen.Confirm:
-		return dim.Render(key.Render("y") + " confirm  " + key.Render("n") + "/" + key.Render("esc") + " cancel")
+		return join(h("y", "confirm"), h("n", "cancel"), h("esc", "cancel"))
 	case screen.Help:
-		return dim.Render(key.Render("esc") + "/" + key.Render("?") + " close")
+		return join(h("j/k", "scroll"), h("g", "top"), h("esc", "close"))
 	case screen.AgentSelect:
-		return dim.Render(key.Render("enter") + " launch  " + key.Render("esc") + " cancel")
+		return join(h("j/k", "move"), h("enter", "launch"), h("esc", "cancel"))
 	case screen.Sessions:
-		return dim.Render(key.Render("enter") + " attach  " + key.Render("x") + " kill  " + key.Render("X") + " clean orphans  " + key.Render("esc") + " close")
+		return join(h("j/k", "move"), h("enter", "attach"), h("x", "kill"), h("X", "clean"), h("esc", "close"))
 	case screen.RepoSelect:
-		return dim.Render(key.Render("enter") + " select  " + key.Render("esc") + " cancel")
+		return join(h("j/k", "move"), h("enter", "select"), h("esc", "cancel"))
 	case screen.WorktreeDetail:
-		return dim.Render(key.Render("e") + " editor  " + key.Render("a") + " agent  " + key.Render("c") + " commit  " + key.Render("esc") + " back")
+		return join(h("e", "editor"), h("a", "agent"), h("b", "branch"), h("c", "commit"), h("p", "push"), h("esc", "back"))
 	default:
 		if activePane == PaneFileTree {
-			return dim.Render(
-				key.Render("enter") + " select  " +
-					key.Render("l") + " expand  " +
-					key.Render("h") + " collapse  " +
-					key.Render("bs") + " up dir  " +
-					key.Render("f") + " find  " +
-					key.Render("ctrl+up") + " worktrees  " +
-					key.Render("?") + " help",
-			)
+			return join(h("C-up", "worktrees"), h("/", "filter wt"), h("?", "help"), h("q", "quit"))
 		}
-		return dim.Render(
-			key.Render("n") + " new  " +
-				key.Render("enter") + " switch  " +
-				key.Render("a") + " agent  " +
-				key.Render("e") + " editor  " +
-				key.Render("c") + " commit  " +
-				key.Render("p") + " push  " +
-				key.Render("ctrl+down") + " browse  " +
-				key.Render("?") + " help",
-		)
+		return join(h("enter", "switch"), h("l", "detail"), h("tab", "repo"), h("/", "filter"), h("S", "sessions"), h("C-down", "browse"), h("?", "help"), h("q", "quit"))
 	}
 }

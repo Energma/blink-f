@@ -273,6 +273,28 @@ func (m *Model) launchEditorCmd(dir string) tea.Cmd {
 	}
 }
 
+// loadBranchesCmd fetches local branch names for the current repo.
+func (m *Model) loadBranchesCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		dir := m.currentRepoDir()
+		if dir == "" {
+			return branchesLoadedMsg{err: fmt.Errorf("no repo selected")}
+		}
+		branches, err := m.git.BranchList(ctx, dir)
+		return branchesLoadedMsg{branches: branches, err: err}
+	}
+}
+
+// checkoutBranchCmd switches the selected worktree to the given branch.
+func (m *Model) checkoutBranchCmd(dir, branch string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		err := m.git.CheckoutBranch(ctx, dir, branch)
+		return branchCheckedOutMsg{branch: branch, err: err}
+	}
+}
+
 // cleanMergedCmd finds and deletes merged worktrees.
 func (m *Model) cleanMergedCmd() tea.Cmd {
 	return func() tea.Msg {

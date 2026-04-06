@@ -10,7 +10,7 @@ import (
 )
 
 // FileTree renders the directory tree browser pane.
-func FileTree(nodes []*components.TreeNode, cursor int, focused bool, filterMode bool, filterText string, matchIndices []int, t *theme.Theme, width, height int) string {
+func FileTree(nodes []*components.TreeNode, cursor int, focused bool, filterMode bool, filterText string, matchIndices []int, paneHints string, t *theme.Theme, width, height int) string {
 	var b strings.Builder
 
 	// Filter bar
@@ -76,6 +76,29 @@ func FileTree(nodes []*components.TreeNode, cursor int, focused bool, filterMode
 	if end < len(nodes) {
 		b.WriteString("\n")
 		b.WriteString(lipgloss.NewStyle().Foreground(t.TextDim).Render(fmt.Sprintf("  ... %d more below", len(nodes)-end)))
+	}
+
+	// Pane action hints pinned to bottom
+	if focused && paneHints != "" {
+		usedLines := end - start
+		if filterMode {
+			usedLines++
+		}
+		if start > 0 {
+			usedLines++
+		}
+		if end < len(nodes) {
+			usedLines++
+		}
+		remaining := height - usedLines - 2
+		for i := 0; i < remaining; i++ {
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(t.Border).
+			Render(strings.Repeat("─", min(width-2, 80))))
+		b.WriteString("\n")
+		b.WriteString(paneHints)
 	}
 
 	return b.String()

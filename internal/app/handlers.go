@@ -38,6 +38,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleDetailKey(key)
 	case screen.Sessions:
 		return m.handleSessionsKey(key)
+	case screen.BranchSelect:
+		return m.handleBranchSelectKey(key)
 	}
 
 	// Filter mode
@@ -106,7 +108,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		m.createBranch = ""
 		m.createBase = ""
+		m.createField = 0
 		m.screenMgr.Push(screen.WorktreeCreate)
+
+	case "b":
+		// Open branch selector to checkout a different branch
+		if wt := m.selectedWorktree(); wt != nil {
+			m.branchForCreate = false
+			m.screenMgr.Push(screen.BranchSelect)
+			return m, m.loadBranchesCmd()
+		}
 
 	case "d":
 		if wt := m.selectedWorktree(); wt != nil && !wt.IsMain {
@@ -412,7 +423,16 @@ func (m *Model) selectRepoFromTree(path, name string) (tea.Model, tea.Cmd) {
 func (m *Model) handleHelpKey(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc", "?", "q":
+		m.helpScroll = 0
 		m.screenMgr.Pop()
+	case "j", "down":
+		m.helpScroll++
+	case "k", "up":
+		if m.helpScroll > 0 {
+			m.helpScroll--
+		}
+	case "g":
+		m.helpScroll = 0
 	}
 	return m, nil
 }
@@ -422,17 +442,35 @@ func (m *Model) handleCreateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc":
 		m.screenMgr.Pop()
+		m.createField = 0
 	case "enter":
 		if m.createBranch != "" {
 			return m, m.createWorktreeCmd(m.createBranch, m.createBase)
 		}
+	case "tab":
+		m.createField = (m.createField + 1) % 2
 	case "backspace":
-		if len(m.createBranch) > 0 {
-			m.createBranch = m.createBranch[:len(m.createBranch)-1]
+		if m.createField == 0 {
+			if len(m.createBranch) > 0 {
+				m.createBranch = m.createBranch[:len(m.createBranch)-1]
+			}
+		} else {
+			if len(m.createBase) > 0 {
+				m.createBase = m.createBase[:len(m.createBase)-1]
+			}
 		}
+	case "ctrl+b":
+		// Open branch picker for base branch
+		m.branchForCreate = true
+		m.screenMgr.Push(screen.BranchSelect)
+		return m, m.loadBranchesCmd()
 	default:
 		if len(key) == 1 && key[0] >= ' ' {
-			m.createBranch += key
+			if m.createField == 0 {
+				m.createBranch += key
+			} else {
+				m.createBase += key
+			}
 		}
 	}
 	return m, nil
@@ -574,6 +612,13 @@ func (m *Model) handleDetailKey(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc", "h", "left":
 		m.screenMgr.Pop()
+	case "b":
+		// Switch branch from detail view
+		if wt := m.selectedWorktree(); wt != nil {
+			m.branchForCreate = false
+			m.screenMgr.Push(screen.BranchSelect)
+			return m, m.loadBranchesCmd()
+		}
 	case "e":
 		// Open editor from detail view
 		if wt := m.selectedWorktree(); wt != nil {
@@ -661,6 +706,47 @@ func (m *Model) handleSessionsKey(key string) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 	}
 
+	return m, nil
+}
+
+func (m *Model) handleBranchSelectKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "esc":
+		m.screenMgr.Pop()
+	case "j", "down":
+		if m.branchCursor < len(m.branches)-1 {
+			m.branchCursor++
+		}
+	case "k", "up":
+		if m.branchCursor > 0 {
+			m.branchCursor--
+		}
+	case "g":
+		m.branchCursor = 0
+	case "G":
+		m.branchCursor = max(0, len(m.branches)-1)
+	case "enter":
+		if m.branchCursor >= 0 && m.branchCursor < len(m.branches) {
+			selected := m.branches[m.branchCursor]
+			m.screenMgr.Pop()
+			if m.branchForCreate {
+				// Set base branch in create form
+				m.createBase = selected
+				// If not already in create form, open it
+				if m.screenMgr.Active() != screen.WorktreeCreate {
+					m.createBranch = ""
+					m.createField = 0
+					m.screenMgr.Push(screen.WorktreeCreate)
+				}
+			} else {
+				// Checkout branch on selected worktree
+				if wt := m.selectedWorktree(); wt != nil {
+					m.statusText = "Checking out " + selected + "..."
+					return m, m.checkoutBranchCmd(wt.Path, selected)
+				}
+			}
+		}
+	}
 	return m, nil
 }
 

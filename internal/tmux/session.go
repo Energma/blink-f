@@ -8,15 +8,23 @@ import (
 	"strings"
 )
 
-// setupBlinkKeys registers the Ctrl+q q shortcut to detach from any
-// blink-managed session. The bindings are server-wide and idempotent.
-func (s *Service) setupBlinkKeys(ctx context.Context) {
+// setupBlinkKeys registers the Ctrl+q shortcuts for blink-managed sessions.
+// The bindings are server-wide and idempotent.
+//   - Ctrl+q q  detach from session
+//   - Ctrl+q e  open editor in current pane directory
+func (s *Service) setupBlinkKeys(ctx context.Context, editorCmd string) {
 	// Ctrl+q activates the "blink" key table.
 	_ = exec.CommandContext(ctx, "tmux", "bind-key", "-T", "root", "C-q",
 		"switch-client", "-T", "blink").Run()
 	// Then q detaches.
 	_ = exec.CommandContext(ctx, "tmux", "bind-key", "-T", "blink", "q",
 		"detach-client").Run()
+	// e opens editor in the pane's current directory.
+	if editorCmd != "" {
+		shellCmd := fmt.Sprintf("%s #{pane_current_path}", editorCmd)
+		_ = exec.CommandContext(ctx, "tmux", "bind-key", "-T", "blink", "e",
+			"run-shell", shellCmd).Run()
+	}
 }
 
 // SessionExists checks if a named tmux session exists.
@@ -39,7 +47,7 @@ func (s *Service) CreateSession(ctx context.Context, name, dir string) error {
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-	s.setupBlinkKeys(ctx)
+	s.setupBlinkKeys(ctx, s.cfg.EditorCmd)
 	return nil
 }
 
@@ -123,7 +131,7 @@ func (s *Service) CreateAgentSplitSession(ctx context.Context, name, dir, agentC
 
 	// Focus the agent pane (top).
 	_ = exec.CommandContext(ctx, "tmux", "select-pane", "-t", name+":0.0").Run()
-	s.setupBlinkKeys(ctx)
+	s.setupBlinkKeys(ctx, s.cfg.EditorCmd)
 	return nil
 }
 
