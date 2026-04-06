@@ -34,6 +34,7 @@ func Help(t *theme.Theme, width, height int) string {
 		}},
 		{"Worktrees", []keyBinding{
 			{"n", "Create new worktree"},
+			{"b", "Select base branch"},
 			{"d", "Delete worktree"},
 			{"D", "Clean merged worktrees"},
 		}},
@@ -48,6 +49,7 @@ func Help(t *theme.Theme, width, height int) string {
 			{"a", "Launch AI agent"},
 			{"Q", "Kill agent session"},
 			{"ctrl+q q", "Detach from session"},
+			{"ctrl+q e", "Open editor (tmux)"},
 			{"e", "Open editor in worktree"},
 		}},
 		{"General", []keyBinding{
