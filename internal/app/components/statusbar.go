@@ -95,12 +95,6 @@ const (
 	PaneFileTree
 )
 
-// hintPair is a key-action pair.
-type hintPair struct {
-	key    string
-	action string
-}
-
 // PaneHints returns the action hints to render inside a pane footer.
 func PaneHints(t *theme.Theme, pane PaneID) string {
 	k := lipgloss.NewStyle().Foreground(t.Secondary).Bold(true)
