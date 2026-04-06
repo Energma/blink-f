@@ -62,8 +62,9 @@ type Model struct {
 	createField  int // 0=branch name, 1=base branch
 
 	// Branch select
-	branches     []string
-	branchCursor int
+	branches       []string
+	branchCursor   int
+	branchForCreate bool // true = pick base branch for create, false = checkout
 
 	// Commit form
 	commitType    int
@@ -111,6 +112,9 @@ type Model struct {
 	treeCursor      int
 	treeFilterMode  bool
 	treeFilterText  string
+
+	// Help scroll
+	helpScroll int
 
 	// Status
 	statusText string
@@ -380,6 +384,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.branchCursor = 0
 		return m, nil
 
+	case branchCheckedOutMsg:
+		if msg.err != nil {
+			m.errText = msg.err.Error()
+			return m, m.clearStatusCmd()
+		}
+		m.statusText = "Switched to " + msg.branch
+		return m, tea.Batch(m.loadWorktreesCmd(), m.clearStatusCmd())
+
 	case statusMsg:
 		m.statusText = string(msg)
 		return m, m.clearStatusCmd()
@@ -443,8 +455,11 @@ func (m *Model) View() tea.View {
 	// Stats
 	stats := components.ComputeStats(m.worktrees)
 
-	// Key hints
-	hints := components.KeyHints(m.theme, m.screenMgr.Active(), components.PaneID(m.activePane))
+	// Navigation hints (between panes)
+	hints := components.NavHints(m.theme, m.screenMgr.Active(), components.PaneID(m.activePane))
+	// Pane-specific action hints (inside panes)
+	upperPaneHints := components.PaneHints(m.theme, components.PaneWorktrees)
+	lowerPaneHints := components.PaneHints(m.theme, components.PaneFileTree)
 
 	// Status bar
 	statusBar := components.StatusBar(
@@ -495,6 +510,8 @@ func (m *Model) View() tea.View {
 		m.cursor,
 		m.filterText,
 		m.filterMode,
+		m.activePane == PaneWorktrees,
+		upperPaneHints,
 		m.theme,
 		contentWidth,
 		upperContentHeight,
@@ -512,6 +529,7 @@ func (m *Model) View() tea.View {
 		m.treeFilterMode,
 		m.treeFilterText,
 		treeMatchIndices,
+		lowerPaneHints,
 		m.theme,
 		contentWidth,
 		lowerContentHeight,
@@ -559,7 +577,7 @@ func (m *Model) View() tea.View {
 	overlay := ""
 	switch m.screenMgr.Active() {
 	case screen.Help:
-		overlay = views.Help(m.theme, m.width, m.height)
+		overlay = views.Help(m.theme, m.width, m.height, m.helpScroll)
 	case screen.WorktreeCreate:
 		overlay = views.Create(m.createBranch, m.createBase, m.createField, m.theme, m.width)
 	case screen.Commit:
