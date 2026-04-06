@@ -13,6 +13,7 @@ const (
 	AgentSelect
 	RepoSelect
 	Sessions
+	BranchSelect
 	Help
 	Filter
 )
@@ -35,6 +36,8 @@ func (t Type) String() string {
 		return "repos"
 	case Sessions:
 		return "sessions"
+	case BranchSelect:
+		return "branches"
 	case Help:
 		return "help"
 	case Filter:

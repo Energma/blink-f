@@ -38,6 +38,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleDetailKey(key)
 	case screen.Sessions:
 		return m.handleSessionsKey(key)
+	case screen.BranchSelect:
+		return m.handleBranchSelectKey(key)
 	}
 
 	// Filter mode
@@ -106,7 +108,13 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		m.createBranch = ""
 		m.createBase = ""
+		m.createField = 0
 		m.screenMgr.Push(screen.WorktreeCreate)
+
+	case "b":
+		// Open branch selector to switch base branch for new worktrees
+		m.screenMgr.Push(screen.BranchSelect)
+		return m, m.loadBranchesCmd()
 
 	case "d":
 		if wt := m.selectedWorktree(); wt != nil && !wt.IsMain {
@@ -422,17 +430,34 @@ func (m *Model) handleCreateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc":
 		m.screenMgr.Pop()
+		m.createField = 0
 	case "enter":
 		if m.createBranch != "" {
 			return m, m.createWorktreeCmd(m.createBranch, m.createBase)
 		}
+	case "tab":
+		m.createField = (m.createField + 1) % 2
 	case "backspace":
-		if len(m.createBranch) > 0 {
-			m.createBranch = m.createBranch[:len(m.createBranch)-1]
+		if m.createField == 0 {
+			if len(m.createBranch) > 0 {
+				m.createBranch = m.createBranch[:len(m.createBranch)-1]
+			}
+		} else {
+			if len(m.createBase) > 0 {
+				m.createBase = m.createBase[:len(m.createBase)-1]
+			}
 		}
+	case "ctrl+b":
+		// Open branch picker for base branch
+		m.screenMgr.Push(screen.BranchSelect)
+		return m, m.loadBranchesCmd()
 	default:
 		if len(key) == 1 && key[0] >= ' ' {
-			m.createBranch += key
+			if m.createField == 0 {
+				m.createBranch += key
+			} else {
+				m.createBase += key
+			}
 		}
 	}
 	return m, nil
@@ -661,6 +686,37 @@ func (m *Model) handleSessionsKey(key string) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 	}
 
+	return m, nil
+}
+
+func (m *Model) handleBranchSelectKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "esc":
+		m.screenMgr.Pop()
+	case "j", "down":
+		if m.branchCursor < len(m.branches)-1 {
+			m.branchCursor++
+		}
+	case "k", "up":
+		if m.branchCursor > 0 {
+			m.branchCursor--
+		}
+	case "enter":
+		if m.branchCursor >= 0 && m.branchCursor < len(m.branches) {
+			selected := m.branches[m.branchCursor]
+			m.screenMgr.Pop()
+			// If we came from create form, set the base branch
+			if m.screenMgr.Active() == screen.WorktreeCreate {
+				m.createBase = selected
+			} else {
+				// From dashboard: open create form with this base branch
+				m.createBase = selected
+				m.createBranch = ""
+				m.createField = 0
+				m.screenMgr.Push(screen.WorktreeCreate)
+			}
+		}
+	}
 	return m, nil
 }
 

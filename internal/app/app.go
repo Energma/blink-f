@@ -59,6 +59,11 @@ type Model struct {
 	// Create form
 	createBranch string
 	createBase   string
+	createField  int // 0=branch name, 1=base branch
+
+	// Branch select
+	branches     []string
+	branchCursor int
 
 	// Commit form
 	commitType    int
@@ -366,6 +371,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailDiffStat = msg.diffStat
 		return m, nil
 
+	case branchesLoadedMsg:
+		if msg.err != nil {
+			m.errText = msg.err.Error()
+			return m, m.clearStatusCmd()
+		}
+		m.branches = msg.branches
+		m.branchCursor = 0
+		return m, nil
+
 	case statusMsg:
 		m.statusText = string(msg)
 		return m, m.clearStatusCmd()
@@ -547,7 +561,7 @@ func (m *Model) View() tea.View {
 	case screen.Help:
 		overlay = views.Help(m.theme, m.width, m.height)
 	case screen.WorktreeCreate:
-		overlay = views.Create(m.createBranch, m.createBase, 0, m.theme, m.width)
+		overlay = views.Create(m.createBranch, m.createBase, m.createField, m.theme, m.width)
 	case screen.Commit:
 		overlay = views.Commit(m.commitType, m.commitScope, m.commitMsg, m.commitField, m.cfg.Git.ConventionalCommits, m.commitFiles, m.theme, m.width)
 	case screen.AgentSelect:
@@ -558,6 +572,8 @@ func (m *Model) View() tea.View {
 		overlay = views.RepoSelect(m.repos, m.activeRepo, m.repoCursor, m.theme, m.width)
 	case screen.Sessions:
 		overlay = views.Sessions(m.sessionInfos, m.sessionCursor, m.theme, m.width, m.height)
+	case screen.BranchSelect:
+		overlay = views.BranchSelect(m.branches, m.branchCursor, m.theme, m.width, m.height)
 	case screen.WorktreeDetail:
 		wt := m.selectedWorktree()
 		if wt != nil {

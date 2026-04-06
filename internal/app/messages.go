@@ -111,6 +111,13 @@ type tickMsg struct{}
 
 type clearStatusMsg struct{}
 
+// --- Branch list ---
+
+type branchesLoadedMsg struct {
+	branches []string
+	err      error
+}
+
 // --- File tree ---
 
 type dirListedMsg struct {

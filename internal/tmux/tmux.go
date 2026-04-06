@@ -16,6 +16,8 @@ type Service struct {
 // NewService creates a tmux Service, detecting availability.
 func NewService(cfg *config.Config) *Service {
 	_, err := exec.LookPath("tmux")
+	// Pass editor command to tmux config for ctrl+q e binding.
+	cfg.Tmux.EditorCmd = cfg.Editor.Command
 	return &Service{
 		cfg:       &cfg.Tmux,
 		available: err == nil,
