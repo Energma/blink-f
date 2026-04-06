@@ -286,6 +286,15 @@ func (m *Model) loadBranchesCmd() tea.Cmd {
 	}
 }
 
+// checkoutBranchCmd switches the selected worktree to the given branch.
+func (m *Model) checkoutBranchCmd(dir, branch string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		err := m.git.CheckoutBranch(ctx, dir, branch)
+		return branchCheckedOutMsg{branch: branch, err: err}
+	}
+}
+
 // cleanMergedCmd finds and deletes merged worktrees.
 func (m *Model) cleanMergedCmd() tea.Cmd {
 	return func() tea.Msg {

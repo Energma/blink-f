@@ -112,9 +112,12 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.screenMgr.Push(screen.WorktreeCreate)
 
 	case "b":
-		// Open branch selector to switch base branch for new worktrees
-		m.screenMgr.Push(screen.BranchSelect)
-		return m, m.loadBranchesCmd()
+		// Open branch selector to checkout a different branch
+		if wt := m.selectedWorktree(); wt != nil {
+			m.branchForCreate = false
+			m.screenMgr.Push(screen.BranchSelect)
+			return m, m.loadBranchesCmd()
+		}
 
 	case "d":
 		if wt := m.selectedWorktree(); wt != nil && !wt.IsMain {
@@ -420,7 +423,16 @@ func (m *Model) selectRepoFromTree(path, name string) (tea.Model, tea.Cmd) {
 func (m *Model) handleHelpKey(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc", "?", "q":
+		m.helpScroll = 0
 		m.screenMgr.Pop()
+	case "j", "down":
+		m.helpScroll++
+	case "k", "up":
+		if m.helpScroll > 0 {
+			m.helpScroll--
+		}
+	case "g":
+		m.helpScroll = 0
 	}
 	return m, nil
 }
@@ -449,6 +461,7 @@ func (m *Model) handleCreateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "ctrl+b":
 		// Open branch picker for base branch
+		m.branchForCreate = true
 		m.screenMgr.Push(screen.BranchSelect)
 		return m, m.loadBranchesCmd()
 	default:
@@ -599,6 +612,13 @@ func (m *Model) handleDetailKey(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc", "h", "left":
 		m.screenMgr.Pop()
+	case "b":
+		// Switch branch from detail view
+		if wt := m.selectedWorktree(); wt != nil {
+			m.branchForCreate = false
+			m.screenMgr.Push(screen.BranchSelect)
+			return m, m.loadBranchesCmd()
+		}
 	case "e":
 		// Open editor from detail view
 		if wt := m.selectedWorktree(); wt != nil {
@@ -701,19 +721,29 @@ func (m *Model) handleBranchSelectKey(key string) (tea.Model, tea.Cmd) {
 		if m.branchCursor > 0 {
 			m.branchCursor--
 		}
+	case "g":
+		m.branchCursor = 0
+	case "G":
+		m.branchCursor = max(0, len(m.branches)-1)
 	case "enter":
 		if m.branchCursor >= 0 && m.branchCursor < len(m.branches) {
 			selected := m.branches[m.branchCursor]
 			m.screenMgr.Pop()
-			// If we came from create form, set the base branch
-			if m.screenMgr.Active() == screen.WorktreeCreate {
+			if m.branchForCreate {
+				// Set base branch in create form
 				m.createBase = selected
+				// If not already in create form, open it
+				if m.screenMgr.Active() != screen.WorktreeCreate {
+					m.createBranch = ""
+					m.createField = 0
+					m.screenMgr.Push(screen.WorktreeCreate)
+				}
 			} else {
-				// From dashboard: open create form with this base branch
-				m.createBase = selected
-				m.createBranch = ""
-				m.createField = 0
-				m.screenMgr.Push(screen.WorktreeCreate)
+				// Checkout branch on selected worktree
+				if wt := m.selectedWorktree(); wt != nil {
+					m.statusText = "Checking out " + selected + "..."
+					return m, m.checkoutBranchCmd(wt.Path, selected)
+				}
 			}
 		}
 	}
