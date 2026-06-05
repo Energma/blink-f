@@ -101,6 +101,7 @@ func (s *remoteServer) routes() http.Handler {
 	mux.HandleFunc("GET /api/sessions", s.handleSessions)
 	mux.HandleFunc("POST /api/spawn", s.handleSpawn)
 	mux.HandleFunc("POST /api/kill", s.handleKill)
+	mux.HandleFunc("POST /api/tui", s.handleTUI)
 	mux.HandleFunc("GET /ws/session/{name}", s.handleSessionWS)
 	return s.auth(mux)
 }
@@ -174,6 +175,14 @@ const indexHTML = `<!doctype html>
       <button id="sp-go" style="background:#4ade80; color:#000; border:0; border-radius:6px; padding:8px 14px; font-weight:600">Spawn ▸</button>
     </div>
     <div id="sp-msg" class="muted" style="margin-top:6px"></div>
+  </div>
+  <div class="card" style="cursor:default">
+    <div class="name">Blink TUI</div>
+    <div class="meta" style="margin-bottom:8px">Open the full Blink app (folder tree, worktrees, session switching) on your phone.</div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap">
+      <input id="tui-dir" placeholder="folder (optional, default: home)" style="flex:1 1 160px; min-width:0; background:#0f1014; color:#e6e6e6; border:1px solid #2c2f3a; border-radius:6px; padding:8px">
+      <button id="tui-go" style="background:#60a5fa; color:#000; border:0; border-radius:6px; padding:8px 14px; font-weight:600">Open TUI ▸</button>
+    </div>
   </div>
   <div id="sessions"></div>
   <p class="muted">Placeholder page. The full UI goes here — it talks to <code>/api/*</code> and <code>/ws/*</code>.</p>
@@ -282,6 +291,20 @@ const indexHTML = `<!doctype html>
     } catch (e) { msg.textContent = String(e); }
   });
 
+  document.getElementById('tui-go').addEventListener('click', async () => {
+    const dir = document.getElementById('tui-dir').value.trim();
+    try {
+      const res = await fetch('/api/tui', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert('error: ' + (data.error || res.status)); return; }
+      openTerminal(data.session);
+    } catch (e) { alert(String(e)); }
+  });
+
   async function load() {
     try {
       const info = await (await fetch('/api/info', opts)).json();
@@ -339,6 +362,19 @@ func (s *remoteServer) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := spawnSession(r.Context(), body.Repo, body.Branch, body.Base)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *remoteServer) handleTUI(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Dir string `json:"dir"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	res, err := launchTUI(r.Context(), body.Dir)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
