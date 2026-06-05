@@ -46,7 +46,12 @@ Responses are JSON.
 | `GET` | `/api/info` | — | `{hostname,user,os,arch,version,tmux,sessions}` |
 | `GET` | `/api/sessions` | — | `[{name,path,windows,attached}]` |
 | `POST` | `/api/spawn` | `{repo,branch,base?}` | `{session,branch,path}` |
+| `POST` | `/api/tui` | `{dir?}` | `{session,path}` — runs the Blink TUI in a tmux session (per-folder); attach to it via the WebSocket to use the full app on the phone |
 | `POST` | `/api/kill` | `{session}` | `{killed}` |
+
+The session list (`/api/sessions`) shows **all** tmux sessions on the machine,
+not only Blink-created ones — so any session, including a Blink TUI, is listed
+and attachable.
 
 ## WebSocket terminal
 
