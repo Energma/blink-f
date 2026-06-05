@@ -176,6 +176,26 @@ func (s *Service) CreateAgentSplitSession(ctx context.Context, name, dir, agentC
 	return nil
 }
 
+// EnsureProgramSession creates a detached session running program full-window
+// (if it doesn't already exist) and returns the name. Used to host the Blink
+// TUI itself so a remote client can attach to the full app on their phone.
+func (s *Service) EnsureProgramSession(ctx context.Context, name, dir, program string) (string, error) {
+	if !s.available {
+		return "", fmt.Errorf("tmux not available")
+	}
+	if s.SessionExists(name) {
+		return name, nil
+	}
+	args := []string{"new-session", "-d", "-s", name, "-c", dir, program}
+	cmd := exec.CommandContext(ctx, "tmux", args...)
+	cmd.Env = os.Environ()
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("create program session %q: %w", name, err)
+	}
+	s.setupBlinkKeys(ctx, s.cfg.EditorCmd)
+	return name, nil
+}
+
 // EnsureSession creates a session if it doesn't exist, returns the name.
 func (s *Service) EnsureSession(ctx context.Context, repoName, branch, dir string) (string, error) {
 	name := SessionNameForWorktree(repoName, branch)

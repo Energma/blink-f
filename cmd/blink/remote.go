@@ -136,6 +136,31 @@ func spawnSession(ctx context.Context, repo, branch, base string) (spawnResult, 
 	return spawnResult{Session: session, Branch: wt.Branch, Path: wt.Path}, nil
 }
 
+// launchTUI ensures a tmux session running the Blink TUI itself in dir, so a
+// remote client can attach to the full app. dir defaults to the user's home;
+// the session is named per-directory so multiple folders can run at once.
+func launchTUI(ctx context.Context, dir string) (spawnResult, error) {
+	if dir == "" {
+		dir, _ = os.UserHomeDir()
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return spawnResult{}, fmt.Errorf("locate blink binary: %w", err)
+	}
+
+	name := "blink-tui"
+	if base := filepath.Base(dir); base != "" && base != "." && base != "/" {
+		name = tmux.SessionNameForWorktree("blink-tui", base)
+	}
+
+	cfg, _ := config.Load()
+	session, err := tmux.NewService(cfg).EnsureProgramSession(ctx, name, dir, exe)
+	if err != nil {
+		return spawnResult{}, err
+	}
+	return spawnResult{Session: session, Path: dir}, nil
+}
+
 func killSession(ctx context.Context, session string) error {
 	cfg, _ := config.Load()
 	tmuxSvc := tmux.NewService(cfg)
