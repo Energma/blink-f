@@ -1,0 +1,15 @@
+[Unit]
+Description=Blink remote control server
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+# Edit ExecStart: set the absolute path to the blink binary, your Tailscale
+# host (from `tailscale ip -4`), and a fixed token so the URL/QR is stable.
+ExecStart=%h/.local/bin/blink serve --addr :7890 --host 100.64.0.1
+Environment=BLINK_REMOTE_TOKEN=change-me-to-a-long-random-token
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
