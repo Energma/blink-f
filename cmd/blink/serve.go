@@ -155,6 +155,9 @@ const indexHTML = `<!doctype html>
   #term-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #1e2027; }
   #term-bar button { background: #2c2f3a; color: #e6e6e6; border: 0; border-radius: 6px; padding: 6px 12px; font-size: 14px; }
   #term { flex: 1; padding: 4px; min-height: 0; }
+  #keybar { display: flex; gap: 6px; padding: 8px; background: #1e2027; overflow-x: auto; }
+  #keybar button { background: #2c2f3a; color: #e6e6e6; border: 0; border-radius: 6px; padding: 9px 13px; font-size: 14px; white-space: nowrap; }
+  #keybar button.active { background: #4ade80; color: #000; }
 </style>
 </head>
 <body>
@@ -182,13 +185,42 @@ const indexHTML = `<!doctype html>
     <span id="term-name" class="name"></span>
   </div>
   <div id="term"></div>
+  <div id="keybar">
+    <button data-k="esc">Esc</button>
+    <button data-k="ctrl" id="kb-ctrl">Ctrl</button>
+    <button data-k="tab">Tab</button>
+    <button data-k="up">↑</button>
+    <button data-k="down">↓</button>
+    <button data-k="left">←</button>
+    <button data-k="right">→</button>
+    <button data-k="pipe">|</button>
+    <button data-k="tilde">~</button>
+  </div>
 </div>
 
 <script>
   const token = new URLSearchParams(location.search).get('token');
   const opts = { headers: { 'Authorization': 'Bearer ' + token } };
 
-  let term, fit, ws;
+  let term, fit, ws, ctrlActive = false;
+  function wsSend(d) {
+    if (ws && ws.readyState === 1) ws.send(typeof d === 'string' ? new TextEncoder().encode(d) : d);
+  }
+  function setCtrl(v) {
+    ctrlActive = v;
+    document.getElementById('kb-ctrl').classList.toggle('active', v);
+  }
+
+  // Helper keys phones lack (Esc/Ctrl/Tab/arrows). Ctrl is a one-shot modifier:
+  // tap Ctrl then a letter to send the control character (e.g. Ctrl then C = ^C).
+  document.getElementById('keybar').addEventListener('click', (e) => {
+    const k = e.target.getAttribute('data-k');
+    if (!k) return;
+    if (k === 'ctrl') { setCtrl(!ctrlActive); return; }
+    const map = { esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', pipe: '|', tilde: '~' };
+    if (map[k]) { wsSend(map[k]); if (term) term.focus(); }
+  });
+
   function openTerminal(name) {
     document.getElementById('term-name').textContent = name;
     document.getElementById('term-view').style.display = 'flex';
@@ -210,11 +242,19 @@ const indexHTML = `<!doctype html>
     ws.onopen = sendResize;
     ws.onmessage = (e) => term.write(new Uint8Array(e.data));
     ws.onclose = () => term.write('\r\n[disconnected]\r\n');
-    term.onData((d) => { if (ws.readyState === 1) ws.send(new TextEncoder().encode(d)); });
+    term.onData((d) => {
+      if (ctrlActive && d.length === 1) {
+        const c = d.toUpperCase().charCodeAt(0);
+        setCtrl(false);
+        if (c >= 64 && c <= 95) { wsSend(String.fromCharCode(c & 31)); return; } // ^A..^_
+      }
+      wsSend(d);
+    });
     window.addEventListener('resize', sendResize);
   }
 
   function closeTerminal() {
+    setCtrl(false);
     if (ws) ws.close();
     if (term) term.dispose();
     document.getElementById('term-view').style.display = 'none';
