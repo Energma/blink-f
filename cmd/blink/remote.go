@@ -148,13 +148,22 @@ func launchTUI(ctx context.Context, dir string) (spawnResult, error) {
 		return spawnResult{}, fmt.Errorf("locate blink binary: %w", err)
 	}
 
-	name := "blink-tui"
-	if base := filepath.Base(dir); base != "" && base != "." && base != "/" {
-		name = tmux.SessionNameForWorktree("blink-tui", base)
+	base := "blink-tui"
+	if b := filepath.Base(dir); b != "" && b != "." && b != "/" {
+		base = tmux.SessionNameForWorktree("blink-tui", b)
 	}
 
 	cfg, _ := config.Load()
-	session, err := tmux.NewService(cfg).EnsureProgramSession(ctx, name, dir, exe)
+	svc := tmux.NewService(cfg)
+
+	// Allocate a fresh name so each launch is a new window the user can manage
+	// independently (blink-tui_repo, blink-tui_repo-2, ...).
+	name := base
+	for i := 2; svc.SessionExists(name); i++ {
+		name = fmt.Sprintf("%s-%d", base, i)
+	}
+
+	session, err := svc.EnsureProgramSession(ctx, name, dir, exe)
 	if err != nil {
 		return spawnResult{}, err
 	}
