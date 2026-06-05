@@ -159,6 +159,13 @@ const indexHTML = `<!doctype html>
   #keybar { display: flex; gap: 6px; padding: 8px; background: #1e2027; overflow-x: auto; }
   #keybar button { background: #2c2f3a; color: #e6e6e6; border: 0; border-radius: 6px; padding: 9px 13px; font-size: 14px; white-space: nowrap; }
   #keybar button.active { background: #4ade80; color: #000; }
+  #tui-keys { display: flex; gap: 6px; padding: 8px; background: #14223a; overflow-x: auto; }
+  #tui-keys button { background: #1e3a5f; color: #cfe3ff; border: 0; border-radius: 6px; padding: 9px 12px; font-size: 14px; white-space: nowrap; }
+  .scard { display: flex; align-items: center; gap: 10px; }
+  .scard > div { flex: 1; min-width: 0; overflow: hidden; }
+  .kill { background: #3a2626; color: #f87171; border: 0; border-radius: 6px; padding: 8px 12px; font-size: 14px; }
+  .badge { background: #1e3a5f; color: #60a5fa; font-size: 11px; padding: 1px 6px; border-radius: 10px; }
+  .shead { color: #9aa0ad; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin: 16px 2px 6px; }
 </style>
 </head>
 <body>
@@ -178,7 +185,7 @@ const indexHTML = `<!doctype html>
   </div>
   <div class="card" style="cursor:default">
     <div class="name">Blink TUI</div>
-    <div class="meta" style="margin-bottom:8px">Open the full Blink app (folder tree, worktrees, session switching) on your phone.</div>
+    <div class="meta" style="margin-bottom:8px">Open the full Blink app on your phone. Each Open starts a new window — manage and reopen them in the list below.</div>
     <div style="display:flex; gap:8px; flex-wrap:wrap">
       <input id="tui-dir" placeholder="folder (optional, default: home)" style="flex:1 1 160px; min-width:0; background:#0f1014; color:#e6e6e6; border:1px solid #2c2f3a; border-radius:6px; padding:8px">
       <button id="tui-go" style="background:#60a5fa; color:#000; border:0; border-radius:6px; padding:8px 14px; font-weight:600">Open TUI ▸</button>
@@ -194,6 +201,19 @@ const indexHTML = `<!doctype html>
     <span id="term-name" class="name"></span>
   </div>
   <div id="term"></div>
+  <div id="tui-keys" style="display:none">
+    <button data-send="enter">⏎ select</button>
+    <button data-send="k">↑</button>
+    <button data-send="j">↓</button>
+    <button data-send="n">n new</button>
+    <button data-send="b">b branch</button>
+    <button data-send="d">d del</button>
+    <button data-send="D">D clean</button>
+    <button data-send="c">c commit</button>
+    <button data-send="p">p push</button>
+    <button data-send="u">u pull</button>
+    <button data-send="s">s stash</button>
+  </div>
   <div id="keybar">
     <button data-k="esc">Esc</button>
     <button data-k="ctrl" id="kb-ctrl">Ctrl</button>
@@ -230,9 +250,50 @@ const indexHTML = `<!doctype html>
     if (map[k]) { wsSend(map[k]); if (term) term.focus(); }
   });
 
+  // Blink TUI navigation buttons (shown only for TUI sessions) — send the
+  // app's own keys so you can drive it without typing on a phone.
+  document.getElementById('tui-keys').addEventListener('click', (e) => {
+    const v = e.target.getAttribute('data-send');
+    if (v == null) return;
+    wsSend(v === 'enter' ? '\r' : v);
+    if (term) term.focus();
+  });
+
+  function renderSession(sn) {
+    const isTui = sn.name.indexOf('blink-tui') === 0;
+    const card = document.createElement('div');
+    card.className = 'card scard';
+    const info = document.createElement('div');
+    info.innerHTML = '<div class="name">' + sn.name + (sn.attached ? ' <span class="dot">●</span>' : '') +
+      (isTui ? ' <span class="badge">TUI</span>' : '') +
+      '</div><div class="meta">' + sn.path + ' · ' + sn.windows + ' win · tap to open</div>';
+    card.appendChild(info);
+    card.addEventListener('click', () => openTerminal(sn.name));
+    const kill = document.createElement('button');
+    kill.className = 'kill';
+    kill.textContent = '✕';
+    kill.addEventListener('click', (ev) => killSessionUI(sn.name, ev));
+    card.appendChild(kill);
+    return card;
+  }
+
+  async function killSessionUI(name, ev) {
+    ev.stopPropagation();
+    if (!confirm('Close ' + name + '?')) return;
+    try {
+      await fetch('/api/kill', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session: name }),
+      });
+      load();
+    } catch (e) { alert(String(e)); }
+  }
+
   function openTerminal(name) {
     document.getElementById('term-name').textContent = name;
     document.getElementById('term-view').style.display = 'flex';
+    document.getElementById('tui-keys').style.display = name.indexOf('blink-tui') === 0 ? 'flex' : 'none';
 
     term = new Terminal({ cursorBlink: true, fontSize: 14, theme: { background: '#000000' } });
     fit = new FitAddon.FitAddon();
@@ -313,16 +374,17 @@ const indexHTML = `<!doctype html>
         info.hostname + ' · ' + info.user + ' · ' + info.os + '/' + info.arch + ' · blink ' + info.version;
       const sessions = await (await fetch('/api/sessions', opts)).json();
       const el = document.getElementById('sessions');
-      if (!sessions.length) { el.innerHTML = '<p class="muted">No active sessions. Spawn one with the CLI, then refresh.</p>'; return; }
       el.innerHTML = '';
-      sessions.forEach((sn) => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = '<div class="name">' + sn.name + (sn.attached ? ' <span class="dot">●</span>' : '') +
-          '</div><div class="meta">' + sn.path + ' · ' + sn.windows + ' win · tap to open</div>';
-        card.addEventListener('click', () => openTerminal(sn.name));
-        el.appendChild(card);
-      });
+      if (!sessions.length) { el.innerHTML = '<p class="muted">No sessions yet. Spawn one or open a TUI above.</p>'; return; }
+      const isTui = (n) => n.indexOf('blink-tui') === 0;
+      const section = (title, list) => {
+        if (!list.length) return;
+        const h = document.createElement('div'); h.className = 'shead'; h.textContent = title;
+        el.appendChild(h);
+        list.forEach((sn) => el.appendChild(renderSession(sn)));
+      };
+      section('Blink TUIs', sessions.filter((s) => isTui(s.name)));
+      section('Sessions', sessions.filter((s) => !isTui(s.name)));
     } catch (e) {
       document.getElementById('status').textContent = 'error';
       document.getElementById('status').className = '';
