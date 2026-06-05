@@ -89,6 +89,47 @@ func (s *Service) ListSessions(ctx context.Context) ([]string, error) {
 	return strings.Split(raw, "\n"), nil
 }
 
+// SessionInfo describes a running tmux session for machine-readable output.
+type SessionInfo struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	Windows  int    `json:"windows"`
+	Attached bool   `json:"attached"`
+}
+
+// ListSessionsDetailed returns running sessions with metadata. Used by the
+// remote control API so a client can list, identify, and join sessions.
+func (s *Service) ListSessionsDetailed(ctx context.Context) ([]SessionInfo, error) {
+	if !s.available {
+		return nil, nil
+	}
+	const format = "#{session_name}\t#{session_path}\t#{session_windows}\t#{session_attached}"
+	cmd := exec.CommandContext(ctx, "tmux", "list-sessions", "-F", format)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, nil // No sessions or tmux not running.
+	}
+	var infos []SessionInfo
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 4 {
+			continue
+		}
+		var windows int
+		fmt.Sscanf(fields[2], "%d", &windows)
+		infos = append(infos, SessionInfo{
+			Name:     fields[0],
+			Path:     fields[1],
+			Windows:  windows,
+			Attached: fields[3] == "1",
+		})
+	}
+	return infos, nil
+}
+
 // SessionNameForWorktree generates a tmux-safe session name.
 func SessionNameForWorktree(repoName, branch string) string {
 	name := fmt.Sprintf("%s_%s", repoName, branch)
