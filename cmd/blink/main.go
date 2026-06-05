@@ -79,6 +79,8 @@ func main() {
 				Usage:  "List all worktrees",
 				Action: listWorktrees,
 			},
+			remoteCommand(),
+			serveCommand(),
 		},
 	}
 
