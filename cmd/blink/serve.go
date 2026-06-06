@@ -102,6 +102,7 @@ func (s *remoteServer) routes() http.Handler {
 	mux.HandleFunc("POST /api/spawn", s.handleSpawn)
 	mux.HandleFunc("POST /api/kill", s.handleKill)
 	mux.HandleFunc("POST /api/tui", s.handleTUI)
+	mux.HandleFunc("POST /api/run", s.handleRun)
 	mux.HandleFunc("GET /ws/session/{name}", s.handleSessionWS)
 	return s.auth(mux)
 }
@@ -184,15 +185,17 @@ const indexHTML = `<!doctype html>
     <div id="sp-msg" class="muted" style="margin-top:6px"></div>
   </div>
   <div class="card" style="cursor:default">
-    <div class="name">Blink TUI</div>
-    <div class="meta" style="margin-bottom:8px">Open the full Blink app on your phone. Each Open starts a new window — manage and reopen them in the list below.</div>
+    <div class="name">Quick launch</div>
+    <div class="meta" style="margin-bottom:8px">Open a full terminal on your phone — Claude Code, a shell, or the Blink TUI — in any folder. Each launch is its own window you can reopen from the list below.</div>
+    <input id="ql-dir" placeholder="folder (optional, default: home)" style="width:100%; box-sizing:border-box; background:#0f1014; color:#e6e6e6; border:1px solid #2c2f3a; border-radius:6px; padding:8px; margin-bottom:8px">
     <div style="display:flex; gap:8px; flex-wrap:wrap">
-      <input id="tui-dir" placeholder="folder (optional, default: home)" style="flex:1 1 160px; min-width:0; background:#0f1014; color:#e6e6e6; border:1px solid #2c2f3a; border-radius:6px; padding:8px">
-      <button id="tui-go" style="background:#60a5fa; color:#000; border:0; border-radius:6px; padding:8px 14px; font-weight:600">Open TUI ▸</button>
+      <button class="launch" data-cmd="claude" data-label="claude" style="background:#c98bdb; color:#000; border:0; border-radius:6px; padding:9px 14px; font-weight:600">Claude Code ▸</button>
+      <button class="launch" data-cmd="" data-label="sh" style="background:#4ade80; color:#000; border:0; border-radius:6px; padding:9px 14px; font-weight:600">Shell ▸</button>
+      <button id="tui-go" style="background:#60a5fa; color:#000; border:0; border-radius:6px; padding:9px 14px; font-weight:600">Blink TUI ▸</button>
     </div>
+    <div id="ql-msg" class="muted" style="margin-top:6px"></div>
   </div>
   <div id="sessions"></div>
-  <p class="muted">Placeholder page. The full UI goes here — it talks to <code>/api/*</code> and <code>/ws/*</code>.</p>
 </main>
 
 <div id="term-view">
@@ -216,6 +219,8 @@ const indexHTML = `<!doctype html>
   </div>
   <div id="keybar">
     <button data-k="esc">Esc</button>
+    <button data-k="enter">⏎</button>
+    <button data-k="cc">^C</button>
     <button data-k="ctrl" id="kb-ctrl">Ctrl</button>
     <button data-k="tab">Tab</button>
     <button data-k="up">↑</button>
@@ -246,7 +251,7 @@ const indexHTML = `<!doctype html>
     const k = e.target.getAttribute('data-k');
     if (!k) return;
     if (k === 'ctrl') { setCtrl(!ctrlActive); return; }
-    const map = { esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', pipe: '|', tilde: '~' };
+    const map = { esc: '\x1b', enter: '\r', cc: '\x03', tab: '\t', up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', pipe: '|', tilde: '~' };
     if (map[k]) { wsSend(map[k]); if (term) term.focus(); }
   });
 
@@ -261,11 +266,13 @@ const indexHTML = `<!doctype html>
 
   function renderSession(sn) {
     const isTui = sn.name.indexOf('blink-tui') === 0;
+    const isClaude = sn.name.indexOf('claude') === 0;
     const card = document.createElement('div');
     card.className = 'card scard';
     const info = document.createElement('div');
+    const badge = isTui ? ' <span class="badge">TUI</span>' : (isClaude ? ' <span class="badge">Claude</span>' : '');
     info.innerHTML = '<div class="name">' + sn.name + (sn.attached ? ' <span class="dot">●</span>' : '') +
-      (isTui ? ' <span class="badge">TUI</span>' : '') +
+      badge +
       '</div><div class="meta">' + sn.path + ' · ' + sn.windows + ' win · tap to open</div>';
     card.appendChild(info);
     card.addEventListener('click', () => openTerminal(sn.name));
@@ -352,18 +359,32 @@ const indexHTML = `<!doctype html>
     } catch (e) { msg.textContent = String(e); }
   });
 
-  document.getElementById('tui-go').addEventListener('click', async () => {
-    const dir = document.getElementById('tui-dir').value.trim();
+  async function launch(path, payload) {
+    const msg = document.getElementById('ql-msg');
+    msg.textContent = 'launching…';
     try {
-      const res = await fetch('/api/tui', {
+      const res = await fetch(path, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dir }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) { alert('error: ' + (data.error || res.status)); return; }
+      if (!res.ok) { msg.textContent = 'error: ' + (data.error || res.status); return; }
+      msg.textContent = '';
       openTerminal(data.session);
-    } catch (e) { alert(String(e)); }
+    } catch (e) { msg.textContent = String(e); }
+  }
+
+  document.querySelectorAll('.launch').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const dir = document.getElementById('ql-dir').value.trim();
+      launch('/api/run', { dir, cmd: btn.getAttribute('data-cmd'), label: btn.getAttribute('data-label') });
+    });
+  });
+
+  document.getElementById('tui-go').addEventListener('click', () => {
+    const dir = document.getElementById('ql-dir').value.trim();
+    launch('/api/tui', { dir });
   });
 
   async function load() {
@@ -377,6 +398,7 @@ const indexHTML = `<!doctype html>
       el.innerHTML = '';
       if (!sessions.length) { el.innerHTML = '<p class="muted">No sessions yet. Spawn one or open a TUI above.</p>'; return; }
       const isTui = (n) => n.indexOf('blink-tui') === 0;
+      const isClaude = (n) => n.indexOf('claude') === 0;
       const section = (title, list) => {
         if (!list.length) return;
         const h = document.createElement('div'); h.className = 'shead'; h.textContent = title;
@@ -384,7 +406,8 @@ const indexHTML = `<!doctype html>
         list.forEach((sn) => el.appendChild(renderSession(sn)));
       };
       section('Blink TUIs', sessions.filter((s) => isTui(s.name)));
-      section('Sessions', sessions.filter((s) => !isTui(s.name)));
+      section('Claude', sessions.filter((s) => isClaude(s.name)));
+      section('Sessions', sessions.filter((s) => !isTui(s.name) && !isClaude(s.name)));
     } catch (e) {
       document.getElementById('status').textContent = 'error';
       document.getElementById('status').className = '';
@@ -437,6 +460,21 @@ func (s *remoteServer) handleTUI(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	res, err := launchTUI(r.Context(), body.Dir)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *remoteServer) handleRun(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Dir   string `json:"dir"`
+		Cmd   string `json:"cmd"`
+		Label string `json:"label"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	res, err := runProgram(r.Context(), body.Dir, body.Cmd, body.Label)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
