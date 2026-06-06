@@ -68,6 +68,7 @@ Responses are JSON.
 | `GET` | `/api/info` | — | `{hostname,user,os,arch,version,tmux,sessions}` |
 | `GET` | `/api/sessions` | — | `[{name,path,windows,attached}]` |
 | `GET` | `/api/repos` | — | `[{name,path}]` — repos from your Blink config, shown as quick-pick buttons in the UI so you launch in a project folder without typing a path |
+| `GET` | `/api/ls?path=` | — | `{path,parent,entries:[{name,path,isRepo}]}` — sub-directories of `path` (default home, `~` expands), each flagged when it's a git repo. Powers the mobile folder browser for finding a repo anywhere on disk |
 | `POST` | `/api/spawn` | `{repo,branch,base?}` | `{session,branch,path}` |
 | `POST` | `/api/tui` | `{dir?}` | `{session,path}` — runs the Blink TUI in a fresh tmux session; attach via the WebSocket to use the full app on the phone |
 | `POST` | `/api/run` | `{dir?,cmd?,label?}` | `{session,path}` — runs `cmd` (default: your shell) in a fresh tmux session in `dir`; `label` prefixes the session name. Used by the web UI's "Claude Code" / "Shell" quick-launch buttons |

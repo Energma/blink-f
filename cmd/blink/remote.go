@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/urfave/cli/v3"
 
@@ -130,6 +131,70 @@ func listRepos() []repoInfo {
 		repos = append(repos, repoInfo{Name: name, Path: r.Path})
 	}
 	return repos
+}
+
+type dirEntry struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	IsRepo bool   `json:"isRepo"`
+}
+
+type dirListing struct {
+	Path    string     `json:"path"`
+	Parent  string     `json:"parent"`
+	Entries []dirEntry `json:"entries"`
+}
+
+// listDir returns the sub-directories of path so a remote client can browse the
+// filesystem to find a repo. path defaults to home; ~ is expanded; a file path
+// lists its containing directory. Hidden directories are skipped; each entry is
+// flagged when it looks like a git repo (has a .git entry).
+func listDir(path string) (dirListing, error) {
+	home, _ := os.UserHomeDir()
+	switch {
+	case path == "" || path == "~":
+		path = home
+	case strings.HasPrefix(path, "~/"):
+		path = filepath.Join(home, path[2:])
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return dirListing{}, fmt.Errorf("resolve path: %w", err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return dirListing{}, fmt.Errorf("open %s: %w", abs, err)
+	}
+	if !info.IsDir() {
+		abs = filepath.Dir(abs)
+	}
+
+	ents, err := os.ReadDir(abs)
+	if err != nil {
+		return dirListing{}, fmt.Errorf("read dir: %w", err)
+	}
+
+	listing := dirListing{Path: abs, Entries: []dirEntry{}}
+	if parent := filepath.Dir(abs); parent != abs {
+		listing.Parent = parent
+	}
+	for _, e := range ents {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		full := filepath.Join(abs, name)
+		fi, err := os.Stat(full) // follows symlinks so linked repos still show
+		if err != nil || !fi.IsDir() {
+			continue
+		}
+		isRepo := false
+		if _, err := os.Stat(filepath.Join(full, ".git")); err == nil {
+			isRepo = true
+		}
+		listing.Entries = append(listing.Entries, dirEntry{Name: name, Path: full, IsRepo: isRepo})
+	}
+	return listing, nil
 }
 
 type spawnResult struct {
