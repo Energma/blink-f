@@ -119,6 +119,7 @@ func (s *remoteServer) routes() http.Handler {
 	mux.HandleFunc("GET /api/sessions", s.handleSessions)
 	mux.HandleFunc("GET /api/repos", s.handleRepos)
 	mux.HandleFunc("GET /api/ls", s.handleLs)
+	mux.HandleFunc("GET /api/worktrees", s.handleWorktrees)
 	mux.HandleFunc("POST /api/spawn", s.handleSpawn)
 	mux.HandleFunc("POST /api/kill", s.handleKill)
 	mux.HandleFunc("POST /api/tui", s.handleTUI)
@@ -143,11 +144,12 @@ func (s *remoteServer) auth(next http.Handler) http.Handler {
 	})
 }
 
-// handleIndex serves a minimal placeholder page so scanning the QR lands on a
-// real "connected" screen instead of a 404. It proves the transport/auth chain
-// works and lists live sessions. Replace this with the real web UI (Slice 3).
+// handleIndex serves the mobile web UI. no-store keeps phones from holding onto
+// a stale cached page across server upgrades (otherwise new buttons/fixes never
+// reach a browser that cached an older version).
 func (s *remoteServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store, must-revalidate")
 	_, _ = w.Write([]byte(indexHTML))
 }
 
@@ -197,6 +199,12 @@ const indexHTML = `<!doctype html>
   #browse-actions { display: flex; align-items: center; gap: 6px; padding: 8px 14px; background: #14223a; }
   #browse-actions .lbl { flex: 1; color: #9aa0ad; font-size: 13px; }
   #browse-actions button { background: #1e3a5f; color: #cfe3ff; border: 0; border-radius: 6px; padding: 8px 12px; font-size: 14px; }
+  #browse-git { padding: 8px 14px 0; }
+  #browse-git .git-head { display: flex; align-items: center; gap: 10px; color: #9aa0ad; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin: 6px 2px; }
+  #browse-git .nb { background: #1e3a5f; color: #cfe3ff; border: 0; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+  #browse-git .wt { display: flex; align-items: center; gap: 8px; background: #1e2027; border: 1px solid #2c2f3a; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
+  #browse-git .wt .b { color: #cfe3ff; font-weight: 600; }
+  #browse-git .wt .open { margin-left: auto; background: #2c2f3a; color: #e6e6e6; border: 0; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
   #browse-list { flex: 1; overflow-y: auto; padding: 10px 14px; }
   #ql-browse { width: 100%; box-sizing: border-box; background: #2c2f3a; color: #cfe3ff; border: 1px solid #3a4150; border-radius: 6px; padding: 8px; margin-bottom: 8px; font-size: 14px; }
 </style>
@@ -244,6 +252,7 @@ const indexHTML = `<!doctype html>
     <button class="bopen" data-act="sh">Shell</button>
     <button class="bopen" data-act="tui">TUI</button>
   </div>
+  <div id="browse-git"></div>
   <div id="browse-list"></div>
 </div>
 
@@ -480,6 +489,7 @@ const indexHTML = `<!doctype html>
       const up = document.getElementById('browse-up');
       up.style.visibility = data.parent ? 'visible' : 'hidden';
       up.setAttribute('data-parent', data.parent || '');
+      renderGit(data.isRepo, data.path);
       const list = document.getElementById('browse-list');
       list.innerHTML = '';
       if (!data.entries.length) { list.innerHTML = '<p class="muted">No subfolders here. Open a terminal with the buttons above.</p>'; return; }
@@ -494,6 +504,54 @@ const indexHTML = `<!doctype html>
       });
     } catch (e) { alert(String(e)); }
   }
+  // Git panel: shown when the current folder is a repo. Lists worktrees (tap to
+  // step into one, then open a terminal there) and creates new branches as
+  // worktrees + sessions — the same workflow as the Blink TUI.
+  async function renderGit(isRepo, repo) {
+    const box = document.getElementById('browse-git');
+    box.innerHTML = '';
+    if (!isRepo) return;
+    const head = document.createElement('div');
+    head.className = 'git-head';
+    head.innerHTML = '<span>worktrees</span>';
+    const nb = document.createElement('button');
+    nb.className = 'nb';
+    nb.textContent = '＋ new branch';
+    nb.addEventListener('click', () => newBranch(repo));
+    head.appendChild(nb);
+    box.appendChild(head);
+    try {
+      const wts = await (await fetch('/api/worktrees?repo=' + encodeURIComponent(repo) + '&token=' + token)).json();
+      (wts || []).forEach((wt) => {
+        const row = document.createElement('div');
+        row.className = 'wt';
+        row.innerHTML = '<span class="b">' + (wt.branch || '(detached)') + '</span>' + (wt.isMain ? ' <span class="badge">main</span>' : '');
+        const open = document.createElement('button');
+        open.className = 'open';
+        open.textContent = 'open ▸';
+        open.addEventListener('click', () => browseTo(wt.path));
+        row.appendChild(open);
+        box.appendChild(row);
+      });
+    } catch (e) { /* worktree listing is best-effort */ }
+  }
+
+  async function newBranch(repo) {
+    const branch = prompt('New branch name (creates a worktree + session):');
+    if (!branch) return;
+    try {
+      const res = await fetch('/api/spawn', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo, branch: branch.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert('error: ' + (data.error || res.status)); return; }
+      document.getElementById('browse-view').style.display = 'none';
+      openTerminal(data.session);
+    } catch (e) { alert(String(e)); }
+  }
+
   function openBrowser() {
     document.getElementById('browse-view').style.display = 'flex';
     browseTo(document.getElementById('ql-dir').value.trim());
@@ -581,6 +639,20 @@ func (s *remoteServer) handleLs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, listing)
+}
+
+func (s *remoteServer) handleWorktrees(w http.ResponseWriter, r *http.Request) {
+	repo := r.URL.Query().Get("repo")
+	if repo == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repo is required"})
+		return
+	}
+	wts, err := repoWorktrees(r.Context(), repo)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, wts)
 }
 
 func (s *remoteServer) handleSpawn(w http.ResponseWriter, r *http.Request) {
