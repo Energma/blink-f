@@ -47,7 +47,11 @@ func (s *remoteServer) handleSessionWS(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "tmux", "attach", "-t", name)
+	// -d detaches any other/ghost clients on attach, so the phone is the sole
+	// client and tmux sizes the window to it. Without this, a stale client left
+	// behind by a dropped cellular connection constrains the window to its old
+	// size and the display garbles ("opens once, then breaks").
+	cmd := exec.CommandContext(ctx, "tmux", "attach", "-d", "-t", name)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
