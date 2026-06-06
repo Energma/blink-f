@@ -111,6 +111,27 @@ func listSessionInfos(ctx context.Context) ([]tmux.SessionInfo, error) {
 	return sessions, nil
 }
 
+type repoInfo struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// listRepos returns the repos configured in Blink, so a remote client can pick
+// one to launch a terminal in instead of typing a path. Names fall back to the
+// directory base when unset.
+func listRepos() []repoInfo {
+	cfg, _ := config.Load()
+	repos := make([]repoInfo, 0, len(cfg.Repos))
+	for _, r := range cfg.Repos {
+		name := r.Name
+		if name == "" {
+			name = filepath.Base(r.Path)
+		}
+		repos = append(repos, repoInfo{Name: name, Path: r.Path})
+	}
+	return repos
+}
+
 type spawnResult struct {
 	Session string `json:"session"`
 	Branch  string `json:"branch"`
