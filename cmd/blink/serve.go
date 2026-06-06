@@ -99,6 +99,7 @@ func (s *remoteServer) routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /api/info", s.handleInfo)
 	mux.HandleFunc("GET /api/sessions", s.handleSessions)
+	mux.HandleFunc("GET /api/repos", s.handleRepos)
 	mux.HandleFunc("POST /api/spawn", s.handleSpawn)
 	mux.HandleFunc("POST /api/kill", s.handleKill)
 	mux.HandleFunc("POST /api/tui", s.handleTUI)
@@ -167,6 +168,9 @@ const indexHTML = `<!doctype html>
   .kill { background: #3a2626; color: #f87171; border: 0; border-radius: 6px; padding: 8px 12px; font-size: 14px; }
   .badge { background: #1e3a5f; color: #60a5fa; font-size: 11px; padding: 1px 6px; border-radius: 10px; }
   .shead { color: #9aa0ad; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin: 16px 2px 6px; }
+  .repos { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .repos button { background: #2c2f3a; color: #cfe3ff; border: 1px solid #3a4150; border-radius: 14px; padding: 6px 12px; font-size: 13px; }
+  .repos button.active { background: #1e3a5f; color: #fff; border-color: #60a5fa; }
 </style>
 </head>
 <body>
@@ -187,7 +191,8 @@ const indexHTML = `<!doctype html>
   <div class="card" style="cursor:default">
     <div class="name">Quick launch</div>
     <div class="meta" style="margin-bottom:8px">Open a full terminal on your phone — Claude Code, a shell, or the Blink TUI — in any folder. Each launch is its own window you can reopen from the list below.</div>
-    <input id="ql-dir" placeholder="folder (optional, default: home)" style="width:100%; box-sizing:border-box; background:#0f1014; color:#e6e6e6; border:1px solid #2c2f3a; border-radius:6px; padding:8px; margin-bottom:8px">
+    <div id="ql-repos" class="repos"></div>
+    <input id="ql-dir" placeholder="folder (tap a repo above, or type a path; default: home)" style="width:100%; box-sizing:border-box; background:#0f1014; color:#e6e6e6; border:1px solid #2c2f3a; border-radius:6px; padding:8px; margin-bottom:8px">
     <div style="display:flex; gap:8px; flex-wrap:wrap">
       <button class="launch" data-cmd="claude" data-label="claude" style="background:#c98bdb; color:#000; border:0; border-radius:6px; padding:9px 14px; font-weight:600">Claude Code ▸</button>
       <button class="launch" data-cmd="" data-label="sh" style="background:#4ade80; color:#000; border:0; border-radius:6px; padding:9px 14px; font-weight:600">Shell ▸</button>
@@ -205,9 +210,15 @@ const indexHTML = `<!doctype html>
   </div>
   <div id="term"></div>
   <div id="tui-keys" style="display:none">
-    <button data-send="enter">⏎ select</button>
+    <button data-send="tab">⇥ repos</button>
+    <button data-send="S">▤ sessions</button>
+    <button data-send="l">→ files</button>
+    <button data-send="esc">‹ back</button>
     <button data-send="k">↑</button>
     <button data-send="j">↓</button>
+    <button data-send="enter">⏎ select</button>
+    <button data-send="r">⟳ refresh</button>
+    <button data-send="?">? help</button>
     <button data-send="n">n new</button>
     <button data-send="b">b branch</button>
     <button data-send="d">d del</button>
@@ -257,10 +268,11 @@ const indexHTML = `<!doctype html>
 
   // Blink TUI navigation buttons (shown only for TUI sessions) — send the
   // app's own keys so you can drive it without typing on a phone.
+  const tuiKeyMap = { enter: '\r', tab: '\t', esc: '\x1b', up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', right: '\x1b[C' };
   document.getElementById('tui-keys').addEventListener('click', (e) => {
     const v = e.target.getAttribute('data-send');
     if (v == null) return;
-    wsSend(v === 'enter' ? '\r' : v);
+    wsSend(tuiKeyMap[v] || v);
     if (term) term.focus();
   });
 
@@ -387,6 +399,27 @@ const indexHTML = `<!doctype html>
     launch('/api/tui', { dir });
   });
 
+  // Configured repos as quick picks — tap one to target it, then launch.
+  async function loadRepos() {
+    try {
+      const repos = await (await fetch('/api/repos', opts)).json();
+      const box = document.getElementById('ql-repos');
+      box.innerHTML = '';
+      const dirInput = document.getElementById('ql-dir');
+      repos.forEach((rp) => {
+        const b = document.createElement('button');
+        b.textContent = rp.name;
+        b.title = rp.path;
+        b.addEventListener('click', () => {
+          dirInput.value = rp.path;
+          box.querySelectorAll('button').forEach((x) => x.classList.remove('active'));
+          b.classList.add('active');
+        });
+        box.appendChild(b);
+      });
+    } catch (e) { /* repos are optional */ }
+  }
+
   async function load() {
     try {
       const info = await (await fetch('/api/info', opts)).json();
@@ -415,6 +448,7 @@ const indexHTML = `<!doctype html>
     }
   }
   load();
+  loadRepos();
 </script>
 </body>
 </html>`
@@ -430,6 +464,10 @@ func (s *remoteServer) handleSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, sessions)
+}
+
+func (s *remoteServer) handleRepos(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, listRepos())
 }
 
 func (s *remoteServer) handleSpawn(w http.ResponseWriter, r *http.Request) {
