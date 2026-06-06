@@ -485,10 +485,6 @@ const indexHTML = `<!doctype html>
     ws = new WebSocket(wsBase() + '/ws/session/' + encodeURIComponent(name) + '?' + qtok());
     ws.binaryType = 'arraybuffer';
 
-    const sendResize = () => {
-      fit.fit();
-      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-    };
     ws.onopen = sendResize;
     ws.onmessage = (e) => term.write(new Uint8Array(e.data));
     ws.onclose = () => term.write('\r\n[disconnected]\r\n');
@@ -500,8 +496,16 @@ const indexHTML = `<!doctype html>
       }
       wsSend(d);
     });
-    window.addEventListener('resize', sendResize);
   }
+
+  // Single persistent resize handler over the current term/ws (re-adding one per
+  // openTerminal leaked stale listeners that fired fit() on disposed terminals).
+  function sendResize() {
+    if (!term || !fit) return;
+    try { fit.fit(); } catch (e) { return; }
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+  }
+  window.addEventListener('resize', sendResize);
 
   function closeTerminal() {
     setCtrl(false);
@@ -597,6 +601,7 @@ const indexHTML = `<!doctype html>
       kbd.style.display = 'none';
       if (ta) { ta.setAttribute('inputmode', 'text'); ta.focus(); }
     }
+    setTimeout(sendResize, 50); // terminal height changed; refit
   }
   document.getElementById('term-kbd').addEventListener('click', () => {
     kbMode = kbMode === 'custom' ? 'native' : 'custom';
