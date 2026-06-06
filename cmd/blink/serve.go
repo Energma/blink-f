@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -18,6 +20,13 @@ import (
 
 	"github.com/Energma/blink-f/internal/config"
 )
+
+// webAssets holds the xterm.js bundle so the mobile UI loads everything from
+// this server (over Tailscale) instead of a public CDN — much faster and
+// reliable on flaky cellular, and it works even with no outbound internet.
+//
+//go:embed assets/*
+var webAssets embed.FS
 
 // serveCommand starts an HTTP server that exposes the remote control API over
 // the network, so a phone/web client (over Tailscale/SSH-forwarded) can drive
@@ -125,6 +134,9 @@ func (s *remoteServer) routes() http.Handler {
 	mux.HandleFunc("POST /api/tui", s.handleTUI)
 	mux.HandleFunc("POST /api/run", s.handleRun)
 	mux.HandleFunc("GET /ws/session/{name}", s.handleSessionWS)
+	if sub, err := fs.Sub(webAssets, "assets"); err == nil {
+		mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServerFS(sub)))
+	}
 	return withCORS(s.auth(mux))
 }
 
@@ -149,6 +161,12 @@ func withCORS(next http.Handler) http.Handler {
 // query param (the latter lets the eventual WebSocket/UI pass it easily).
 func (s *remoteServer) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Static assets (the xterm.js bundle) carry no secrets and are loaded by
+		// <script>/<link> tags that can't send a token; serve them unauthenticated.
+		if strings.HasPrefix(r.URL.Path, "/assets/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		provided := r.URL.Query().Get("token")
 		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 			provided = strings.TrimPrefix(h, "Bearer ")
@@ -176,9 +194,9 @@ const indexHTML = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blink Remote</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
-<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+<link rel="stylesheet" href="/assets/xterm.min.css">
+<script defer src="/assets/xterm.min.js"></script>
+<script defer src="/assets/addon-fit.min.js"></script>
 <style>
   body { font-family: system-ui, sans-serif; margin: 0; background: #15161a; color: #e6e6e6; }
   header { padding: 16px; background: #1e2027; border-bottom: 1px solid #2c2f3a; }
