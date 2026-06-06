@@ -125,7 +125,24 @@ func (s *remoteServer) routes() http.Handler {
 	mux.HandleFunc("POST /api/tui", s.handleTUI)
 	mux.HandleFunc("POST /api/run", s.handleRun)
 	mux.HandleFunc("GET /ws/session/{name}", s.handleSessionWS)
-	return s.auth(mux)
+	return withCORS(s.auth(mux))
+}
+
+// withCORS lets one machine's web UI call another machine's API cross-origin
+// (so you can manage several PCs from a single page). Auth is still by token, so
+// a permissive origin is fine; preflight OPTIONS is answered before auth since
+// browsers send it without the Authorization header.
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // auth enforces the bearer token via the Authorization header or a ?token=
@@ -192,6 +209,9 @@ const indexHTML = `<!doctype html>
   .repos { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
   .repos button { background: #2c2f3a; color: #cfe3ff; border: 1px solid #3a4150; border-radius: 14px; padding: 6px 12px; font-size: 13px; }
   .repos button.active { background: #1e3a5f; color: #fff; border-color: #60a5fa; }
+  .machbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .mchip { background: #2c2f3a; color: #e6e6e6; border: 1px solid #3a4150; border-radius: 14px; padding: 5px 12px; font-size: 13px; }
+  .mchip.active { background: #14532d; color: #fff; border-color: #4ade80; }
   #browse-view { position: fixed; inset: 0; background: #15161a; display: none; flex-direction: column; }
   #browse-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #1e2027; }
   #browse-bar button { background: #2c2f3a; color: #e6e6e6; border: 0; border-radius: 6px; padding: 6px 12px; font-size: 14px; }
@@ -213,6 +233,7 @@ const indexHTML = `<!doctype html>
 <header>
   <h1>Blink Remote <span class="ok" id="status">connecting…</span></h1>
   <div class="meta" id="machine"></div>
+  <div class="machbar" id="machbar"></div>
 </header>
 <main>
   <div class="card" style="cursor:default">
@@ -297,8 +318,64 @@ const indexHTML = `<!doctype html>
 </div>
 
 <script>
-  const token = new URLSearchParams(location.search).get('token');
-  const opts = { headers: { 'Authorization': 'Bearer ' + token } };
+  // ---- Machines: control several PCs from one page. Each machine is a
+  // blink serve URL + token; calls below target the active machine, cross-origin
+  // over the tailnet (the server sends permissive CORS). The list lives in
+  // localStorage of whichever page you opened ("home" machine).
+  function loadMachines() { try { return JSON.parse(localStorage.getItem('blinkMachines')) || []; } catch (e) { return []; } }
+  function saveMachines() { localStorage.setItem('blinkMachines', JSON.stringify(machines)); }
+  let machines = loadMachines();
+  let active = 0;
+  (function ensureSelf() {
+    const selfTok = new URLSearchParams(location.search).get('token') || '';
+    const i = machines.findIndex((m) => m.base === location.origin);
+    if (i === -1) { machines.unshift({ name: location.hostname, base: location.origin, token: selfTok }); active = 0; }
+    else { if (selfTok) machines[i].token = selfTok; active = i; }
+    saveMachines();
+  })();
+  function M() { return machines[active] || { name: '?', base: location.origin, token: '' }; }
+  function aopts() { return { headers: { 'Authorization': 'Bearer ' + M().token } }; }
+  function jhdr() { return { 'Authorization': 'Bearer ' + M().token, 'Content-Type': 'application/json' }; }
+  function api(p) { return M().base + p; }
+  function qtok() { return 'token=' + encodeURIComponent(M().token); }
+  function wsBase() { return M().base.replace(/^http/, 'ws'); }
+
+  function parseMachine(url) {
+    try { const u = new URL(url.trim()); return { name: u.hostname, base: u.origin, token: u.searchParams.get('token') || '' }; }
+    catch (e) { return null; }
+  }
+  async function addMachine() {
+    const url = prompt("Paste the other PC's Blink URL (from its QR / serve output):");
+    if (!url) return;
+    const m = parseMachine(url);
+    if (!m || !m.token) { alert('Could not read a URL with a token in it.'); return; }
+    try { const info = await (await fetch(m.base + '/api/info', { headers: { 'Authorization': 'Bearer ' + m.token } })).json(); if (info.hostname) m.name = info.hostname; } catch (e) { }
+    const i = machines.findIndex((x) => x.base === m.base);
+    if (i >= 0) machines[i] = m; else machines.push(m);
+    active = machines.findIndex((x) => x.base === m.base);
+    saveMachines(); switchMachine(active);
+  }
+  function switchMachine(i) { active = i; saveMachines(); renderMachines(); load(); loadRepos(); }
+  function renderMachines() {
+    const bar = document.getElementById('machbar');
+    bar.innerHTML = '';
+    machines.forEach((m, i) => {
+      const b = document.createElement('button');
+      b.className = 'mchip' + (i === active ? ' active' : '');
+      b.textContent = m.name;
+      b.addEventListener('click', () => switchMachine(i));
+      b.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (m.base === location.origin) { alert('This is the machine you are connected to; open its own page to remove.'); return; }
+        if (confirm('Remove ' + m.name + '?')) { machines.splice(i, 1); if (active >= machines.length) active = machines.length - 1; saveMachines(); switchMachine(active); }
+      });
+      bar.appendChild(b);
+    });
+    const add = document.createElement('button');
+    add.className = 'mchip'; add.textContent = '＋ PC';
+    add.addEventListener('click', addMachine);
+    bar.appendChild(add);
+  }
 
   let term, fit, ws, ctrlActive = false;
   function wsSend(d) {
@@ -353,9 +430,9 @@ const indexHTML = `<!doctype html>
     ev.stopPropagation();
     if (!confirm('Close ' + name + '?')) return;
     try {
-      await fetch('/api/kill', {
+      await fetch(api('/api/kill'), {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        headers: jhdr(),
         body: JSON.stringify({ session: name }),
       });
       load();
@@ -373,8 +450,7 @@ const indexHTML = `<!doctype html>
     term.open(document.getElementById('term'));
     fit.fit();
 
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(proto + '://' + location.host + '/ws/session/' + encodeURIComponent(name) + '?token=' + token);
+    ws = new WebSocket(wsBase() + '/ws/session/' + encodeURIComponent(name) + '?' + qtok());
     ws.binaryType = 'arraybuffer';
 
     const sendResize = () => {
@@ -411,9 +487,9 @@ const indexHTML = `<!doctype html>
     if (!repo || !branch) { msg.textContent = 'repo and branch required'; return; }
     msg.textContent = 'spawning…';
     try {
-      const res = await fetch('/api/spawn', {
+      const res = await fetch(api('/api/spawn'), {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        headers: jhdr(),
         body: JSON.stringify({ repo, branch }),
       });
       const data = await res.json();
@@ -428,9 +504,9 @@ const indexHTML = `<!doctype html>
     const msg = document.getElementById('ql-msg');
     msg.textContent = 'launching…';
     try {
-      const res = await fetch(path, {
+      const res = await fetch(api(path), {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        headers: jhdr(),
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -455,7 +531,7 @@ const indexHTML = `<!doctype html>
   // Configured repos as quick picks — tap one to target it, then launch.
   async function loadRepos() {
     try {
-      const repos = await (await fetch('/api/repos', opts)).json();
+      const repos = await (await fetch(api('/api/repos'), aopts())).json();
       const box = document.getElementById('ql-repos');
       box.innerHTML = '';
       const dirInput = document.getElementById('ql-dir');
@@ -481,7 +557,7 @@ const indexHTML = `<!doctype html>
   }
   async function browseTo(path) {
     try {
-      const res = await fetch('/api/ls?path=' + encodeURIComponent(path || '') + '&token=' + token);
+      const res = await fetch(api('/api/ls?path=' + encodeURIComponent(path || '') + '&' + qtok()));
       const data = await res.json();
       if (!res.ok) { alert('error: ' + (data.error || res.status)); return; }
       browsePath = data.path;
@@ -521,7 +597,7 @@ const indexHTML = `<!doctype html>
     head.appendChild(nb);
     box.appendChild(head);
     try {
-      const wts = await (await fetch('/api/worktrees?repo=' + encodeURIComponent(repo) + '&token=' + token)).json();
+      const wts = await (await fetch(api('/api/worktrees?repo=' + encodeURIComponent(repo) + '&' + qtok()))).json();
       (wts || []).forEach((wt) => {
         const row = document.createElement('div');
         row.className = 'wt';
@@ -540,9 +616,9 @@ const indexHTML = `<!doctype html>
     const branch = prompt('New branch name (creates a worktree + session):');
     if (!branch) return;
     try {
-      const res = await fetch('/api/spawn', {
+      const res = await fetch(api('/api/spawn'), {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        headers: jhdr(),
         body: JSON.stringify({ repo, branch: branch.trim() }),
       });
       const data = await res.json();
@@ -577,15 +653,16 @@ const indexHTML = `<!doctype html>
 
   async function load() {
     try {
-      const info = await (await fetch('/api/info', opts)).json();
+      const info = await (await fetch(api('/api/info'), aopts())).json();
       document.getElementById('status').textContent = 'connected ✓';
       document.getElementById('machine').textContent =
         info.hostname + ' · ' + info.user + ' · ' + info.os + '/' + info.arch + ' · blink ' + info.version;
+      if (info.hostname && M().name !== info.hostname) { M().name = info.hostname; saveMachines(); renderMachines(); }
       if (info.claudeCmd) {
         const cb = document.querySelector('.launch[data-label="claude"]');
         if (cb) cb.setAttribute('data-cmd', info.claudeCmd);
       }
-      const sessions = await (await fetch('/api/sessions', opts)).json();
+      const sessions = await (await fetch(api('/api/sessions'), aopts())).json();
       const el = document.getElementById('sessions');
       el.innerHTML = '';
       if (!sessions.length) { el.innerHTML = '<p class="muted">No sessions yet. Spawn one or open a TUI above.</p>'; return; }
@@ -606,6 +683,7 @@ const indexHTML = `<!doctype html>
       document.getElementById('machine').textContent = String(e);
     }
   }
+  renderMachines();
   load();
   loadRepos();
 </script>
