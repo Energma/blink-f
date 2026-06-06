@@ -142,6 +142,7 @@ type dirEntry struct {
 type dirListing struct {
 	Path    string     `json:"path"`
 	Parent  string     `json:"parent"`
+	IsRepo  bool       `json:"isRepo"`
 	Entries []dirEntry `json:"entries"`
 }
 
@@ -175,6 +176,9 @@ func listDir(path string) (dirListing, error) {
 	}
 
 	listing := dirListing{Path: abs, Entries: []dirEntry{}}
+	if _, err := os.Stat(filepath.Join(abs, ".git")); err == nil {
+		listing.IsRepo = true
+	}
 	if parent := filepath.Dir(abs); parent != abs {
 		listing.Parent = parent
 	}
@@ -201,6 +205,31 @@ type spawnResult struct {
 	Session string `json:"session"`
 	Branch  string `json:"branch"`
 	Path    string `json:"path"`
+}
+
+type worktreeInfo struct {
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+	IsMain bool   `json:"isMain"`
+}
+
+// repoWorktrees returns the git worktrees of the repo containing repo, so a
+// remote client can see and open existing workspaces like the Blink TUI does.
+func repoWorktrees(ctx context.Context, repo string) ([]worktreeInfo, error) {
+	svc := gitpkg.NewService()
+	root, err := svc.RepoRoot(ctx, repo)
+	if err != nil {
+		return nil, fmt.Errorf("not a git repository: %s", repo)
+	}
+	wts, err := svc.ListWorktrees(ctx, root)
+	if err != nil {
+		return nil, fmt.Errorf("list worktrees: %w", err)
+	}
+	out := make([]worktreeInfo, 0, len(wts))
+	for _, wt := range wts {
+		out = append(out, worktreeInfo{Path: wt.Path, Branch: wt.Branch, IsMain: wt.IsMain})
+	}
+	return out, nil
 }
 
 func spawnSession(ctx context.Context, repo, branch, base string) (spawnResult, error) {
