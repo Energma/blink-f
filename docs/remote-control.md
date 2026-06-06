@@ -83,6 +83,19 @@ The session list (`/api/sessions`) shows **all** tmux sessions on the machine,
 not only Blink-created ones — so any session, including a Blink TUI, is listed
 and attachable.
 
+## Controlling multiple PCs
+
+Run `blink serve` on each machine (each gets its own Tailscale IP + token).
+Open one machine's page as your "home" page, then **＋ PC** and paste another
+machine's Blink URL (from its QR / serve output). The web UI keeps the machine
+list in that page's `localStorage` and routes every API/WebSocket call to the
+selected machine — tap a chip to switch, long-press to remove. No central hub:
+each PC is reached directly over the tailnet.
+
+This works because `blink serve` sends permissive CORS headers
+(`Access-Control-Allow-Origin: *`); auth is still per-machine token, so a wide
+origin is safe on the tailnet.
+
 ## WebSocket terminal
 
 `GET /ws/session/{name}?token=<token>` — upgrades to a WebSocket bridged to the
