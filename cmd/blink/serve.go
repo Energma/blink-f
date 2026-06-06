@@ -118,6 +118,7 @@ func (s *remoteServer) routes() http.Handler {
 	mux.HandleFunc("GET /api/info", s.handleInfo)
 	mux.HandleFunc("GET /api/sessions", s.handleSessions)
 	mux.HandleFunc("GET /api/repos", s.handleRepos)
+	mux.HandleFunc("GET /api/ls", s.handleLs)
 	mux.HandleFunc("POST /api/spawn", s.handleSpawn)
 	mux.HandleFunc("POST /api/kill", s.handleKill)
 	mux.HandleFunc("POST /api/tui", s.handleTUI)
@@ -189,6 +190,15 @@ const indexHTML = `<!doctype html>
   .repos { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
   .repos button { background: #2c2f3a; color: #cfe3ff; border: 1px solid #3a4150; border-radius: 14px; padding: 6px 12px; font-size: 13px; }
   .repos button.active { background: #1e3a5f; color: #fff; border-color: #60a5fa; }
+  #browse-view { position: fixed; inset: 0; background: #15161a; display: none; flex-direction: column; }
+  #browse-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #1e2027; }
+  #browse-bar button { background: #2c2f3a; color: #e6e6e6; border: 0; border-radius: 6px; padding: 6px 12px; font-size: 14px; }
+  #browse-path { font-size: 12px; color: #9aa0ad; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+  #browse-actions { display: flex; align-items: center; gap: 6px; padding: 8px 14px; background: #14223a; }
+  #browse-actions .lbl { flex: 1; color: #9aa0ad; font-size: 13px; }
+  #browse-actions button { background: #1e3a5f; color: #cfe3ff; border: 0; border-radius: 6px; padding: 8px 12px; font-size: 14px; }
+  #browse-list { flex: 1; overflow-y: auto; padding: 10px 14px; }
+  #ql-browse { width: 100%; box-sizing: border-box; background: #2c2f3a; color: #cfe3ff; border: 1px solid #3a4150; border-radius: 6px; padding: 8px; margin-bottom: 8px; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -211,6 +221,7 @@ const indexHTML = `<!doctype html>
     <div class="meta" style="margin-bottom:8px">Open a full terminal on your phone — Claude Code, a shell, or the Blink TUI — in any folder. Each launch is its own window you can reopen from the list below.</div>
     <div id="ql-repos" class="repos"></div>
     <input id="ql-dir" placeholder="folder (tap a repo above, or type a path; default: home)" style="width:100%; box-sizing:border-box; background:#0f1014; color:#e6e6e6; border:1px solid #2c2f3a; border-radius:6px; padding:8px; margin-bottom:8px">
+    <button id="ql-browse">📁 Browse files…</button>
     <div style="display:flex; gap:8px; flex-wrap:wrap">
       <button class="launch" data-cmd="claude" data-label="claude" style="background:#c98bdb; color:#000; border:0; border-radius:6px; padding:9px 14px; font-weight:600">Claude Code ▸</button>
       <button class="launch" data-cmd="" data-label="sh" style="background:#4ade80; color:#000; border:0; border-radius:6px; padding:9px 14px; font-weight:600">Shell ▸</button>
@@ -220,6 +231,21 @@ const indexHTML = `<!doctype html>
   </div>
   <div id="sessions"></div>
 </main>
+
+<div id="browse-view">
+  <div id="browse-bar">
+    <button id="browse-close">‹ Back</button>
+    <span id="browse-path"></span>
+  </div>
+  <div id="browse-actions">
+    <button id="browse-up">⬆ up</button>
+    <span class="lbl">open here ▸</span>
+    <button class="bopen" data-act="claude">Claude</button>
+    <button class="bopen" data-act="sh">Shell</button>
+    <button class="bopen" data-act="tui">TUI</button>
+  </div>
+  <div id="browse-list"></div>
+</div>
 
 <div id="term-view">
   <div id="term-bar">
@@ -438,6 +464,59 @@ const indexHTML = `<!doctype html>
     } catch (e) { /* repos are optional */ }
   }
 
+  // Filesystem browser — find a repo anywhere on disk, then open a terminal in it.
+  let browsePath = '';
+  function claudeCmdValue() {
+    const cb = document.querySelector('.launch[data-label="claude"]');
+    return cb ? (cb.getAttribute('data-cmd') || 'claude') : 'claude';
+  }
+  async function browseTo(path) {
+    try {
+      const res = await fetch('/api/ls?path=' + encodeURIComponent(path || '') + '&token=' + token);
+      const data = await res.json();
+      if (!res.ok) { alert('error: ' + (data.error || res.status)); return; }
+      browsePath = data.path;
+      document.getElementById('browse-path').textContent = data.path;
+      const up = document.getElementById('browse-up');
+      up.style.visibility = data.parent ? 'visible' : 'hidden';
+      up.setAttribute('data-parent', data.parent || '');
+      const list = document.getElementById('browse-list');
+      list.innerHTML = '';
+      if (!data.entries.length) { list.innerHTML = '<p class="muted">No subfolders here. Open a terminal with the buttons above.</p>'; return; }
+      data.entries.forEach((en) => {
+        const row = document.createElement('div');
+        row.className = 'card scard';
+        const info = document.createElement('div');
+        info.innerHTML = '<div class="name">' + en.name + (en.isRepo ? ' <span class="badge">git</span>' : '') + '</div>';
+        row.appendChild(info);
+        row.addEventListener('click', () => browseTo(en.path));
+        list.appendChild(row);
+      });
+    } catch (e) { alert(String(e)); }
+  }
+  function openBrowser() {
+    document.getElementById('browse-view').style.display = 'flex';
+    browseTo(document.getElementById('ql-dir').value.trim());
+  }
+  document.getElementById('ql-browse').addEventListener('click', openBrowser);
+  document.getElementById('browse-close').addEventListener('click', () => {
+    document.getElementById('browse-view').style.display = 'none';
+  });
+  document.getElementById('browse-up').addEventListener('click', (e) => {
+    const p = e.currentTarget.getAttribute('data-parent');
+    if (p) browseTo(p);
+  });
+  document.querySelectorAll('.bopen').forEach((b) => {
+    b.addEventListener('click', () => {
+      const act = b.getAttribute('data-act');
+      document.getElementById('ql-dir').value = browsePath;
+      document.getElementById('browse-view').style.display = 'none';
+      if (act === 'tui') launch('/api/tui', { dir: browsePath });
+      else if (act === 'claude') launch('/api/run', { dir: browsePath, cmd: claudeCmdValue(), label: 'claude' });
+      else launch('/api/run', { dir: browsePath, cmd: '', label: 'sh' });
+    });
+  });
+
   async function load() {
     try {
       const info = await (await fetch('/api/info', opts)).json();
@@ -493,6 +572,15 @@ func (s *remoteServer) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 func (s *remoteServer) handleRepos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, listRepos())
+}
+
+func (s *remoteServer) handleLs(w http.ResponseWriter, r *http.Request) {
+	listing, err := listDir(r.URL.Query().Get("path"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, listing)
 }
 
 func (s *remoteServer) handleSpawn(w http.ResponseWriter, r *http.Request) {
