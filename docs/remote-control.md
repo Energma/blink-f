@@ -35,6 +35,28 @@ Flags:
 | `--token` | generated | bearer token clients must present (or `BLINK_REMOTE_TOKEN`) |
 | `--host` | system hostname | hostname/IP encoded in the URL + QR (use your Tailscale address) |
 
+## Configuration (`remote:` block)
+
+Remote-control settings live in their own block in the Blink config
+(`~/.config/blink/config.yaml` or a project `.blink.yaml`), so you don't have to
+pass flags every time:
+
+```yaml
+remote:
+  addr: ":7890"               # listen address
+  token: "your-long-token"    # bearer token clients must present
+  host: "100.x.y.z"           # your Tailscale name/IP, encoded in the URL + QR
+  claude_cmd: "claude"        # command the "Claude Code" launch button runs
+```
+
+Precedence is **flag / env > `remote:` config > built-in default**, so a flag
+always wins for a one-off override. `claude_cmd` lets you point the Claude Code
+button at a custom invocation (e.g. `claude --resume`, or a full path if `claude`
+isn't on the server's `PATH`).
+
+The repos shown as quick-pick buttons in the UI come from the top-level
+`repos:` block (see `/api/repos`).
+
 ## HTTP API
 
 All endpoints require the token, via `Authorization: Bearer <token>` **or**

@@ -17,6 +17,17 @@ type Config struct {
 	Git      GitConfig      `yaml:"git"`
 	UI       UIConfig       `yaml:"ui"`
 	Keys     KeyConfig      `yaml:"keybindings"`
+	Remote   RemoteConfig   `yaml:"remote"`
+}
+
+// RemoteConfig holds settings for the `blink serve` remote control server.
+// Kept in its own block so remote settings live in one place; serve flags and
+// env vars override these.
+type RemoteConfig struct {
+	Addr      string `yaml:"addr"`       // listen address (e.g. ":7890")
+	Token     string `yaml:"token"`      // bearer token clients must present
+	Host      string `yaml:"host"`       // hostname/IP encoded in the URL + QR (e.g. Tailscale name)
+	ClaudeCmd string `yaml:"claude_cmd"` // command the "Claude Code" launch button runs
 }
 
 type RepoConfig struct {
@@ -127,6 +138,10 @@ func Default() *Config {
 			Refresh:        "r",
 			Filter:         "/",
 			RepoSwitch:     "tab",
+		},
+		Remote: RemoteConfig{
+			Addr:      ":7890",
+			ClaudeCmd: "claude",
 		},
 	}
 }

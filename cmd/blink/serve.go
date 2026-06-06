@@ -15,6 +15,8 @@ import (
 
 	"github.com/mdp/qrterminal/v3"
 	"github.com/urfave/cli/v3"
+
+	"github.com/Energma/blink-f/internal/config"
 )
 
 // serveCommand starts an HTTP server that exposes the remote control API over
@@ -28,17 +30,16 @@ func serveCommand() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "addr",
-				Value: ":7890",
-				Usage: "Address to listen on",
+				Usage: "Address to listen on (overrides remote.addr; default :7890)",
 			},
 			&cli.StringFlag{
 				Name:    "token",
-				Usage:   "Bearer token clients must present (generated if empty)",
+				Usage:   "Bearer token clients must present (overrides remote.token; generated if unset)",
 				Sources: cli.EnvVars("BLINK_REMOTE_TOKEN"),
 			},
 			&cli.StringFlag{
 				Name:  "host",
-				Usage: "Hostname clients use to reach this server (e.g. your Tailscale name); defaults to the system hostname",
+				Usage: "Hostname clients use to reach this server (overrides remote.host); defaults to the system hostname",
 			},
 		},
 		Action: runServe,
@@ -46,16 +47,22 @@ func serveCommand() *cli.Command {
 }
 
 func runServe(ctx context.Context, cmd *cli.Command) error {
-	addr := cmd.String("addr")
-	token := cmd.String("token")
+	cfg, _ := config.Load()
+	rc := cfg.Remote
+
+	// Precedence: explicit flag/env > remote: config block > built-in default.
+	addr := firstNonEmpty(cmd.String("addr"), rc.Addr, ":7890")
+	host := firstNonEmpty(cmd.String("host"), rc.Host)
+	token := firstNonEmpty(cmd.String("token"), rc.Token)
 	if token == "" {
 		token = generateToken()
 	}
+	claudeCmd := firstNonEmpty(rc.ClaudeCmd, "claude")
 
-	srv := &remoteServer{token: token}
+	srv := &remoteServer{token: token, claudeCmd: claudeCmd}
 	handler := srv.routes()
 
-	clientURL := buildClientURL(cmd.String("host"), addr, token)
+	clientURL := buildClientURL(host, addr, token)
 	fmt.Fprintf(os.Stderr, "blink remote server listening on %s\n", addr)
 	fmt.Fprintf(os.Stderr, "  url:   %s\n", clientURL)
 	fmt.Fprintf(os.Stderr, "  token: %s\n\n", token)
@@ -91,7 +98,18 @@ func generateToken() string {
 }
 
 type remoteServer struct {
-	token string
+	token     string
+	claudeCmd string
+}
+
+// firstNonEmpty returns the first non-empty string in vals, or "" if none.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (s *remoteServer) routes() http.Handler {
@@ -426,6 +444,10 @@ const indexHTML = `<!doctype html>
       document.getElementById('status').textContent = 'connected ✓';
       document.getElementById('machine').textContent =
         info.hostname + ' · ' + info.user + ' · ' + info.os + '/' + info.arch + ' · blink ' + info.version;
+      if (info.claudeCmd) {
+        const cb = document.querySelector('.launch[data-label="claude"]');
+        if (cb) cb.setAttribute('data-cmd', info.claudeCmd);
+      }
       const sessions = await (await fetch('/api/sessions', opts)).json();
       const el = document.getElementById('sessions');
       el.innerHTML = '';
@@ -454,7 +476,10 @@ const indexHTML = `<!doctype html>
 </html>`
 
 func (s *remoteServer) handleInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, gatherMachineInfo(r.Context()))
+	writeJSON(w, http.StatusOK, struct {
+		machineInfo
+		ClaudeCmd string `json:"claudeCmd"`
+	}{gatherMachineInfo(r.Context()), s.claudeCmd})
 }
 
 func (s *remoteServer) handleSessions(w http.ResponseWriter, r *http.Request) {
