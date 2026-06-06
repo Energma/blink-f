@@ -46,8 +46,14 @@ Responses are JSON.
 | `GET` | `/api/info` | — | `{hostname,user,os,arch,version,tmux,sessions}` |
 | `GET` | `/api/sessions` | — | `[{name,path,windows,attached}]` |
 | `POST` | `/api/spawn` | `{repo,branch,base?}` | `{session,branch,path}` |
-| `POST` | `/api/tui` | `{dir?}` | `{session,path}` — runs the Blink TUI in a tmux session (per-folder); attach to it via the WebSocket to use the full app on the phone |
+| `POST` | `/api/tui` | `{dir?}` | `{session,path}` — runs the Blink TUI in a fresh tmux session; attach via the WebSocket to use the full app on the phone |
+| `POST` | `/api/run` | `{dir?,cmd?,label?}` | `{session,path}` — runs `cmd` (default: your shell) in a fresh tmux session in `dir`; `label` prefixes the session name. Used by the web UI's "Claude Code" / "Shell" quick-launch buttons |
 | `POST` | `/api/kill` | `{session}` | `{killed}` |
+
+`/api/run` is how you get a full Claude Code terminal on the phone: it starts
+`claude` (or any command) in a real tmux PTY, then you attach over the WebSocket
+and it behaves exactly as on the PC — colors, cursor, Ctrl-C, the lot. Each
+launch is a fresh, uniquely-named window (`claude_repo`, `claude_repo-2`, …).
 
 The session list (`/api/sessions`) shows **all** tmux sessions on the machine,
 not only Blink-created ones — so any session, including a Blink TUI, is listed

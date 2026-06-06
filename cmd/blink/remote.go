@@ -136,9 +136,28 @@ func spawnSession(ctx context.Context, repo, branch, base string) (spawnResult, 
 	return spawnResult{Session: session, Branch: wt.Branch, Path: wt.Path}, nil
 }
 
+// uniqueName returns base, or base-2, base-3, ... — the first name not already
+// taken by a tmux session — so each launch is its own independent window.
+func uniqueName(svc *tmux.Service, base string) string {
+	name := base
+	for i := 2; svc.SessionExists(name); i++ {
+		name = fmt.Sprintf("%s-%d", base, i)
+	}
+	return name
+}
+
+// sessionBase builds a per-folder session-name prefix from label and dir, so
+// names read like "claude_myrepo" / "blink-tui_myrepo".
+func sessionBase(label, dir string) string {
+	if b := filepath.Base(dir); b != "" && b != "." && b != "/" {
+		return tmux.SessionNameForWorktree(label, b)
+	}
+	return label
+}
+
 // launchTUI ensures a tmux session running the Blink TUI itself in dir, so a
 // remote client can attach to the full app. dir defaults to the user's home;
-// the session is named per-directory so multiple folders can run at once.
+// each launch is a fresh window so multiple TUIs can run at once.
 func launchTUI(ctx context.Context, dir string) (spawnResult, error) {
 	if dir == "" {
 		dir, _ = os.UserHomeDir()
@@ -148,22 +167,39 @@ func launchTUI(ctx context.Context, dir string) (spawnResult, error) {
 		return spawnResult{}, fmt.Errorf("locate blink binary: %w", err)
 	}
 
-	base := "blink-tui"
-	if b := filepath.Base(dir); b != "" && b != "." && b != "/" {
-		base = tmux.SessionNameForWorktree("blink-tui", b)
-	}
+	cfg, _ := config.Load()
+	svc := tmux.NewService(cfg)
+	name := uniqueName(svc, sessionBase("blink-tui", dir))
 
+	session, err := svc.EnsureProgramSession(ctx, name, dir, exe)
+	if err != nil {
+		return spawnResult{}, err
+	}
+	return spawnResult{Session: session, Path: dir}, nil
+}
+
+// runProgram creates a fresh tmux session running command in dir, so a remote
+// client can attach and use a full terminal (Claude Code, a shell, anything).
+// dir defaults to home; command defaults to the user's shell; label is the
+// session-name prefix shown in the UI (e.g. "claude", "sh").
+func runProgram(ctx context.Context, dir, command, label string) (spawnResult, error) {
+	if dir == "" {
+		dir, _ = os.UserHomeDir()
+	}
 	cfg, _ := config.Load()
 	svc := tmux.NewService(cfg)
 
-	// Allocate a fresh name so each launch is a new window the user can manage
-	// independently (blink-tui_repo, blink-tui_repo-2, ...).
-	name := base
-	for i := 2; svc.SessionExists(name); i++ {
-		name = fmt.Sprintf("%s-%d", base, i)
+	if command == "" {
+		if command = cfg.Tmux.Shell; command == "" {
+			command = os.Getenv("SHELL")
+		}
+	}
+	if label == "" {
+		label = "run"
 	}
 
-	session, err := svc.EnsureProgramSession(ctx, name, dir, exe)
+	name := uniqueName(svc, sessionBase(label, dir))
+	session, err := svc.EnsureProgramSession(ctx, name, dir, command)
 	if err != nil {
 		return spawnResult{}, err
 	}
