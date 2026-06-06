@@ -211,9 +211,18 @@ const indexHTML = `<!doctype html>
   .muted { color: #6b7280; font-size: 13px; }
   code { background: #0f1014; padding: 1px 5px; border-radius: 4px; }
   #term-view { position: fixed; inset: 0; background: #000; display: none; flex-direction: column; }
-  #term-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #1e2027; }
+  #term-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #1e2027; }
   #term-bar button { background: #2c2f3a; color: #e6e6e6; border: 0; border-radius: 6px; padding: 6px 12px; font-size: 14px; }
+  #term-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #term-switch-list { display: none; position: absolute; top: 52px; left: 8px; right: 8px; max-height: 60vh; overflow-y: auto; background: #1e2027; border: 1px solid #2c2f3a; border-radius: 10px; z-index: 20; padding: 6px; }
+  .swrow { display: block; width: 100%; text-align: left; background: #15161a; color: #e6e6e6; border: 1px solid #2c2f3a; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; font-size: 14px; }
   #term { flex: 1; padding: 4px; min-height: 0; }
+  #kbd { display: none; background: #0f1014; padding: 5px 4px calc(5px + env(safe-area-inset-bottom)); }
+  .kbrow { display: flex; gap: 4px; margin-bottom: 4px; justify-content: center; }
+  .kbkey { flex: 1; min-width: 0; background: #2c2f3a; color: #e6e6e6; border: 0; border-radius: 6px; padding: 11px 0; font-size: 15px; }
+  .kbkey:active { background: #4a5163; }
+  .kbkey.kbspecial { background: #3a4150; color: #cfe3ff; flex: 1.3; font-size: 13px; }
+  .kbkey.kbspace { flex: 4; }
   #keybar { display: flex; gap: 6px; padding: 8px; background: #1e2027; overflow-x: auto; }
   #keybar button { background: #2c2f3a; color: #e6e6e6; border: 0; border-radius: 6px; padding: 9px 13px; font-size: 14px; white-space: nowrap; }
   #keybar button.active { background: #4ade80; color: #000; }
@@ -299,7 +308,10 @@ const indexHTML = `<!doctype html>
   <div id="term-bar">
     <button id="term-close">‹ Back</button>
     <span id="term-name" class="name"></span>
+    <button id="term-switch" title="switch window">⇄</button>
+    <button id="term-kbd" title="toggle keyboard">⌨</button>
   </div>
+  <div id="term-switch-list"></div>
   <div id="term"></div>
   <div id="tui-keys" style="display:none">
     <button data-send="tab">⇥ repos</button>
@@ -333,6 +345,7 @@ const indexHTML = `<!doctype html>
     <button data-k="pipe">|</button>
     <button data-k="tilde">~</button>
   </div>
+  <div id="kbd"></div>
 </div>
 
 <script>
@@ -467,6 +480,7 @@ const indexHTML = `<!doctype html>
     term.loadAddon(fit);
     term.open(document.getElementById('term'));
     fit.fit();
+    applyKbMode(); // suppress the device keyboard, show the on-screen one
 
     ws = new WebSocket(wsBase() + '/ws/session/' + encodeURIComponent(name) + '?' + qtok());
     ws.binaryType = 'arraybuffer';
@@ -496,7 +510,126 @@ const indexHTML = `<!doctype html>
     document.getElementById('term-view').style.display = 'none';
     load();
   }
-  document.getElementById('term-close').addEventListener('click', closeTerminal);
+  document.getElementById('term-close').addEventListener('click', () => {
+    document.getElementById('term-switch-list').style.display = 'none';
+    closeTerminal();
+  });
+
+  // ---- On-screen keyboard. The device keyboard is hard to use for a terminal
+  // (autocorrect, no Esc/Tab/Ctrl, covers the screen), so we suppress it and
+  // drive the PTY from these keys. ⌨ toggles back to the native keyboard.
+  const KB_LOWER = [
+    ['1','2','3','4','5','6','7','8','9','0'],
+    ['q','w','e','r','t','y','u','i','o','p'],
+    ['a','s','d','f','g','h','j','k','l'],
+    ['{shift}','z','x','c','v','b','n','m','{bs}'],
+    ['{sym}','{esc}','{tab}','{space}','{up}','{down}','{ent}'],
+  ];
+  const KB_UPPER = [
+    ['1','2','3','4','5','6','7','8','9','0'],
+    ['Q','W','E','R','T','Y','U','I','O','P'],
+    ['A','S','D','F','G','H','J','K','L'],
+    ['{shift}','Z','X','C','V','B','N','M','{bs}'],
+    ['{sym}','{esc}','{tab}','{space}','{up}','{down}','{ent}'],
+  ];
+  const KB_SYM = [
+    ['!','@','#','$','%','^','&','*','(',')'],
+    ['-','_','=','+','[',']','{','}','|','\\'],
+    ['~','{bt}',"'",'"',':',';','/','?','<','>'],
+    ['{abc}','.',',','{left}','{right}','{bs}'],
+    ['{abc}','{esc}','{tab}','{space}','{up}','{down}','{ent}'],
+  ];
+  const KB_LABEL = { '{shift}':'⇧','{bs}':'⌫','{sym}':'?#!','{abc}':'abc','{esc}':'esc','{tab}':'tab','{space}':'space','{up}':'↑','{down}':'↓','{left}':'←','{right}':'→','{ent}':'⏎','{bt}':String.fromCharCode(96) };
+  let kbLayer = 'lower', kbShift = false;
+  function kbLayout() { return kbLayer === 'sym' ? KB_SYM : (kbShift ? KB_UPPER : KB_LOWER); }
+  function renderKbd() {
+    const el = document.getElementById('kbd');
+    el.innerHTML = '';
+    kbLayout().forEach((row) => {
+      const r = document.createElement('div');
+      r.className = 'kbrow';
+      row.forEach((key) => {
+        const b = document.createElement('button');
+        const special = key.charAt(0) === '{';
+        b.className = 'kbkey' + (special ? ' kbspecial' : '') + (key === '{space}' ? ' kbspace' : '');
+        b.textContent = KB_LABEL[key] || key;
+        b.addEventListener('click', () => kbPress(key));
+        r.appendChild(b);
+      });
+      el.appendChild(r);
+    });
+  }
+  function kbPress(key) {
+    switch (key) {
+      case '{shift}': kbShift = !kbShift; renderKbd(); return;
+      case '{sym}': kbLayer = 'sym'; renderKbd(); return;
+      case '{abc}': kbLayer = 'lower'; renderKbd(); return;
+      case '{bs}': wsSend('\x7f'); break;
+      case '{esc}': wsSend('\x1b'); break;
+      case '{tab}': wsSend('\t'); break;
+      case '{space}': wsSend(' '); break;
+      case '{up}': wsSend('\x1b[A'); break;
+      case '{down}': wsSend('\x1b[B'); break;
+      case '{left}': wsSend('\x1b[D'); break;
+      case '{right}': wsSend('\x1b[C'); break;
+      case '{ent}': wsSend('\r'); break;
+      case '{bt}': wsSend(String.fromCharCode(96)); break;
+      default:
+        if (ctrlActive && key.length === 1) {
+          const c = key.toUpperCase().charCodeAt(0);
+          setCtrl(false);
+          if (c >= 64 && c <= 95) { wsSend(String.fromCharCode(c & 31)); break; }
+        }
+        wsSend(key);
+        if (kbShift && kbLayer !== 'sym') { kbShift = false; renderKbd(); } // one-shot shift
+    }
+    if (term) term.focus();
+  }
+
+  let kbMode = 'custom'; // 'custom' = on-screen keyboard (device kbd off); 'native' = device keyboard
+  function applyKbMode() {
+    const kbd = document.getElementById('kbd');
+    const ta = term && term.textarea;
+    if (kbMode === 'custom') {
+      kbd.style.display = 'block';
+      if (ta) { ta.setAttribute('inputmode', 'none'); ta.setAttribute('autocorrect', 'off'); ta.setAttribute('autocapitalize', 'off'); ta.setAttribute('spellcheck', 'false'); }
+    } else {
+      kbd.style.display = 'none';
+      if (ta) { ta.setAttribute('inputmode', 'text'); ta.focus(); }
+    }
+  }
+  document.getElementById('term-kbd').addEventListener('click', () => {
+    kbMode = kbMode === 'custom' ? 'native' : 'custom';
+    applyKbMode();
+  });
+  renderKbd();
+
+  // ---- Switch to another window/session without leaving the terminal.
+  function switchTerminal(name) {
+    if (name === document.getElementById('term-name').textContent) return;
+    if (ws) ws.close();
+    if (term) term.dispose();
+    openTerminal(name);
+  }
+  document.getElementById('term-switch').addEventListener('click', async () => {
+    const el = document.getElementById('term-switch-list');
+    if (el.style.display === 'block') { el.style.display = 'none'; return; }
+    el.innerHTML = '<div class="muted" style="padding:8px">loading…</div>';
+    el.style.display = 'block';
+    try {
+      const sessions = await (await fetch(api('/api/sessions'), aopts())).json();
+      const cur = document.getElementById('term-name').textContent;
+      el.innerHTML = '';
+      (sessions || []).forEach((sn) => {
+        const b = document.createElement('button');
+        b.className = 'swrow';
+        b.textContent = (sn.name === cur ? '● ' : '') + sn.name + '  —  ' + sn.path;
+        b.addEventListener('click', () => { el.style.display = 'none'; switchTerminal(sn.name); });
+        el.appendChild(b);
+      });
+      if (!sessions.length) el.innerHTML = '<div class="muted" style="padding:8px">no sessions</div>';
+    } catch (e) { el.innerHTML = '<div class="muted" style="padding:8px">' + e + '</div>'; }
+  });
 
   document.getElementById('sp-go').addEventListener('click', async () => {
     const repo = document.getElementById('sp-repo').value.trim();
