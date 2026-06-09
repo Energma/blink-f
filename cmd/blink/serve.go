@@ -192,12 +192,13 @@ const indexHTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Blink Remote</title>
 <link rel="stylesheet" href="/assets/xterm.min.css">
 <script defer src="/assets/xterm.min.js"></script>
 <script defer src="/assets/addon-fit.min.js"></script>
 <style>
+  html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
   body { font-family: system-ui, sans-serif; margin: 0; background: #15161a; color: #e6e6e6; }
   header { padding: 16px; background: #1e2027; border-bottom: 1px solid #2c2f3a; }
   h1 { font-size: 18px; margin: 0; }
