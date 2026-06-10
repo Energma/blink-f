@@ -508,6 +508,34 @@ const indexHTML = `<!doctype html>
   }
   window.addEventListener('resize', sendResize);
 
+  // Touch-scroll: forward vertical swipes on the terminal as mouse-wheel events
+  // so tmux scrollback (the conversation) can be scrolled on a phone. tmux mouse
+  // mode is enabled server-side on attach; tmux uses the alternate screen, so
+  // xterm's own scrollback is empty and only wheel events reach the history.
+  // Drag down = scroll up/back into history.
+  (function () {
+    const el = document.getElementById('term');
+    let lastY = null, acc = 0;
+    function wheel(up) { wsSend('\x1b[<' + (up ? 64 : 65) + ';1;1M'); }
+    el.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) { lastY = null; return; }
+      lastY = e.touches[0].clientY; acc = 0;
+    }, { passive: true });
+    el.addEventListener('touchmove', (e) => {
+      if (lastY === null || e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      acc += y - lastY; lastY = y;
+      const step = 22; // px of swipe per wheel tick
+      while (Math.abs(acc) >= step) {
+        const up = acc > 0;
+        acc += up ? -step : step;
+        wheel(up);
+      }
+      e.preventDefault();
+    }, { passive: false });
+    el.addEventListener('touchend', () => { lastY = null; }, { passive: true });
+  })();
+
   function closeTerminal() {
     setCtrl(false);
     if (ws) ws.close();

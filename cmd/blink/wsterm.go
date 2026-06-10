@@ -36,6 +36,11 @@ func (s *remoteServer) handleSessionWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enable mouse mode on this session so touch-swipe scrolling (forwarded as
+	// wheel events by the mobile UI) scrolls the tmux scrollback. Scoped to the
+	// session with -t so it doesn't change the user's global tmux behaviour.
+	_ = exec.Command("tmux", "set-option", "-t", name, "mouse", "on").Run()
+
 	// Token auth is the real gate (enforced by middleware via ?token=), so we
 	// skip origin verification to allow a separately-hosted UI during dev.
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
