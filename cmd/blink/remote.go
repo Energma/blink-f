@@ -232,6 +232,29 @@ func repoWorktrees(ctx context.Context, repo string) ([]worktreeInfo, error) {
 	return out, nil
 }
 
+type initResult struct {
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+}
+
+// initProject makes dir a git repo with a root commit on main, so a remote
+// client can start a project from a bare folder and immediately get the same
+// worktree/branch workflow as any other repo. ~ is expanded like listDir.
+func initProject(ctx context.Context, dir string) (initResult, error) {
+	if dir == "" {
+		return initResult{}, fmt.Errorf("dir is required")
+	}
+	home, _ := os.UserHomeDir()
+	if dir == "~" || strings.HasPrefix(dir, "~/") {
+		dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
+	}
+	root, err := gitpkg.NewService().InitRepo(ctx, dir)
+	if err != nil {
+		return initResult{}, fmt.Errorf("init repo: %w", err)
+	}
+	return initResult{Path: root, Branch: "main"}, nil
+}
+
 func spawnSession(ctx context.Context, repo, branch, base string) (spawnResult, error) {
 	cfg, _ := config.Load()
 	svc := gitpkg.NewService()

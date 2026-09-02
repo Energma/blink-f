@@ -130,6 +130,7 @@ func (s *remoteServer) routes() http.Handler {
 	mux.HandleFunc("GET /api/ls", s.handleLs)
 	mux.HandleFunc("GET /api/worktrees", s.handleWorktrees)
 	mux.HandleFunc("POST /api/spawn", s.handleSpawn)
+	mux.HandleFunc("POST /api/init", s.handleInit)
 	mux.HandleFunc("POST /api/kill", s.handleKill)
 	mux.HandleFunc("POST /api/tui", s.handleTUI)
 	mux.HandleFunc("POST /api/run", s.handleRun)
@@ -771,7 +772,7 @@ const indexHTML = `<!doctype html>
   async function renderGit(isRepo, repo) {
     const box = document.getElementById('browse-git');
     box.innerHTML = '';
-    if (!isRepo) return;
+    if (!isRepo) { renderInit(repo); return; }
     const head = document.createElement('div');
     head.className = 'git-head';
     head.innerHTML = '<span>worktrees</span>';
@@ -795,6 +796,47 @@ const indexHTML = `<!doctype html>
         box.appendChild(row);
       });
     } catch (e) { /* worktree listing is best-effort */ }
+  }
+
+  // Not a repo yet: offer to start one here (git init + root commit on main)
+  // so a bare folder becomes a project you can branch, worktree and hand to
+  // Claude — without leaving the phone.
+  function renderInit(dir) {
+    const box = document.getElementById('browse-git');
+    const head = document.createElement('div');
+    head.className = 'git-head';
+    head.innerHTML = '<span>not a git repo</span>';
+    const init = document.createElement('button');
+    init.className = 'nb';
+    init.textContent = '＋ init repo';
+    init.addEventListener('click', () => initProject(dir, false));
+    head.appendChild(init);
+    const initClaude = document.createElement('button');
+    initClaude.className = 'nb';
+    initClaude.textContent = '＋ init + Claude ▸';
+    initClaude.addEventListener('click', () => initProject(dir, true));
+    head.appendChild(initClaude);
+    box.appendChild(head);
+  }
+
+  async function initProject(dir, withClaude) {
+    if (!confirm('Initialize a git repo in\n' + dir + '\n(git init, empty first commit on main)?')) return;
+    try {
+      const res = await fetch(api('/api/init'), {
+        method: 'POST',
+        headers: jhdr(),
+        body: JSON.stringify({ dir }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert('error: ' + (data.error || res.status)); return; }
+      if (withClaude) {
+        document.getElementById('ql-dir').value = data.path;
+        document.getElementById('browse-view').style.display = 'none';
+        launch('/api/run', { dir: data.path, cmd: claudeCmdValue(), label: 'claude' });
+        return;
+      }
+      browseTo(data.path);
+    } catch (e) { alert(String(e)); }
   }
 
   async function newBranch(repo) {
@@ -933,6 +975,22 @@ func (s *remoteServer) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := spawnSession(r.Context(), body.Repo, body.Branch, body.Base)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *remoteServer) handleInit(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Dir string `json:"dir"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	res, err := initProject(r.Context(), body.Dir)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
