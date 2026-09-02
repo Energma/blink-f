@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 )
 
@@ -38,4 +39,25 @@ func (s *Service) IsGitRepo(ctx context.Context, dir string) bool {
 // RemoteURL returns the URL of the origin remote.
 func (s *Service) RemoteURL(ctx context.Context, dir string) (string, error) {
 	return s.run(ctx, dir, "remote", "get-url", "origin")
+}
+
+// InitRepo turns dir into a fresh git repository on branch "main" with an
+// empty root commit, so worktrees can be created immediately (git worktree add
+// needs at least one commit). Existing files are left unstaged on purpose: a
+// remote-driven init must never sweep secrets into history. Refuses when dir
+// is already inside a repository so it can't create a nested one by accident.
+func (s *Service) InitRepo(ctx context.Context, dir string) (string, error) {
+	if s.IsGitRepo(ctx, dir) {
+		return "", fmt.Errorf("already a git repository: %s", dir)
+	}
+	if _, err := s.run(ctx, dir, "init"); err != nil {
+		return "", err
+	}
+	if _, err := s.run(ctx, dir, "symbolic-ref", "HEAD", "refs/heads/main"); err != nil {
+		return "", err
+	}
+	if _, err := s.run(ctx, dir, "commit", "--allow-empty", "-m", "chore: initialize repository"); err != nil {
+		return "", fmt.Errorf("initial commit: %w", err)
+	}
+	return s.RepoRoot(ctx, dir)
 }
