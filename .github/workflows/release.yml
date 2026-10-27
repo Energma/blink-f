@@ -14,7 +14,7 @@ env:
   # rmx is compiled from this exact commit of rust-mux and embedded. Bump it
   # deliberately: a blink release pins the rmx it ships.
   RMX_REPO: Energma/rust-terminal-multiplexer
-  RMX_REF: 7c7d3a527f9806640b004db452a62cab30dc468e
+  RMX_REF: 663f83c90691c96db323309f92a9f085b9f6ef81
   GO_VERSION: "1.25"
 
 jobs:
