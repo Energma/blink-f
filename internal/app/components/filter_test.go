@@ -53,3 +53,23 @@ func TestFilterWorktreesNoMatch(t *testing.T) {
 	indices := FilterWorktrees(wts, "zzz")
 	assert.Empty(t, indices)
 }
+
+func TestFilterBranches(t *testing.T) {
+	branches := []string{"main", "feature/login", "fix/bug-123", "my-awesome-integration"}
+	tests := []struct {
+		name  string
+		query string
+		want  []string
+	}{
+		{"empty returns all", "", branches},
+		{"substring", "login", []string{"feature/login"}},
+		{"case insensitive", "LOGIN", []string{"feature/login"}},
+		{"substring ranks before fuzzy", "main", []string{"main", "my-awesome-integration"}},
+		{"no match", "zzz", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, FilterBranches(branches, tt.query))
+		})
+	}
+}

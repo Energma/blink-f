@@ -9,6 +9,10 @@ import (
 )
 
 type Config struct {
+	// Multiplexer selects the session backend: "rmx" (bundled, the default)
+	// or "tmux". The tmux: block's shell and auto_session apply to both.
+	Multiplexer string `yaml:"multiplexer"`
+
 	Repos    []RepoConfig   `yaml:"repos"`
 	Agents   AgentConfig    `yaml:"agents"`
 	Editor   EditorConfig   `yaml:"editor"`
@@ -83,6 +87,7 @@ type KeyConfig struct {
 
 func Default() *Config {
 	return &Config{
+		Multiplexer: "rmx",
 		Agents: AgentConfig{
 			Default: "claude",
 			Providers: map[string]ProviderConfig{
@@ -198,6 +203,9 @@ func loadEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("BLINK_THEME"); v != "" {
 		cfg.UI.Theme = v
+	}
+	if v := os.Getenv("BLINK_MULTIPLEXER"); v != "" {
+		cfg.Multiplexer = v
 	}
 	if v := os.Getenv("BLINK_SHELL"); v != "" {
 		cfg.Tmux.Shell = v

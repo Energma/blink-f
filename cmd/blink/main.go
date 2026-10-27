@@ -79,6 +79,7 @@ func main() {
 				Usage:  "List all worktrees",
 				Action: listWorktrees,
 			},
+			updateCommand(),
 		},
 	}
 
@@ -151,7 +152,7 @@ func switchWorktree(ctx context.Context, cmd *cli.Command) error {
 	tmuxSvc := tmux.NewService(cfg)
 
 	if !tmuxSvc.IsAvailable() {
-		return fmt.Errorf("tmux not available")
+		return fmt.Errorf("%s not available", tmuxSvc.Backend())
 	}
 
 	cwd, _ := os.Getwd()
@@ -203,7 +204,7 @@ func launchAgent(ctx context.Context, cmd *cli.Command) error {
 
 	cwd, _ := os.Getwd()
 
-	if cmd.Bool("popup") && tmux.InsideTmux() {
+	if cmd.Bool("popup") && tmuxSvc.Backend() == tmux.BackendTmux && tmux.InsideTmux() {
 		return agent.LaunchInPopup(ctx, tmuxSvc, p, cwd)
 	}
 

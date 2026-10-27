@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Energma/blink-f/internal/app/components"
 	"github.com/Energma/blink-f/internal/git"
 	"github.com/Energma/blink-f/internal/theme"
 	"charm.land/lipgloss/v2"
 )
 
 // Commit renders the commit message editor with staged file preview.
-func Commit(commitType int, scopeInput, msgInput string, activeField int, conventional bool, changedFiles []string, t *theme.Theme, width int) string {
+func Commit(commitType int, scopeInput, msgInput *components.TextInput, activeField int, conventional bool, changedFiles []string, t *theme.Theme, width int) string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(t.Primary).
@@ -19,7 +20,8 @@ func Commit(commitType int, scopeInput, msgInput string, activeField int, conven
 	label := lipgloss.NewStyle().Foreground(t.TextDim)
 	active := lipgloss.NewStyle().Foreground(t.Secondary).Bold(true)
 	inactive := lipgloss.NewStyle().Foreground(t.Text)
-	cursor := lipgloss.NewStyle().Foreground(t.Primary).Render("█")
+	cursor := lipgloss.NewStyle().Foreground(t.Primary)
+	muted := lipgloss.NewStyle().Foreground(t.Muted)
 
 	var b strings.Builder
 	b.WriteString(title)
@@ -65,15 +67,7 @@ func Commit(commitType int, scopeInput, msgInput string, activeField int, conven
 
 		// Scope
 		b.WriteString(label.Render("Scope: "))
-		if activeField == 1 {
-			b.WriteString(inactive.Render(scopeInput) + cursor)
-		} else {
-			if scopeInput != "" {
-				b.WriteString(inactive.Render(scopeInput))
-			} else {
-				b.WriteString(lipgloss.NewStyle().Foreground(t.Muted).Render("(optional)"))
-			}
-		}
+		b.WriteString(scopeInput.View(activeField == 1, inactive, cursor, muted, "(optional)"))
 		b.WriteString("\n\n")
 	}
 
@@ -83,20 +77,16 @@ func Commit(commitType int, scopeInput, msgInput string, activeField int, conven
 	if !conventional {
 		msgField = 0
 	}
-	if activeField == msgField {
-		b.WriteString(inactive.Render(msgInput) + cursor)
-	} else {
-		b.WriteString(inactive.Render(msgInput))
-	}
+	b.WriteString(msgInput.View(activeField == msgField, inactive, cursor, muted, ""))
 	b.WriteString("\n\n")
 
 	// Preview
-	if msgInput != "" {
-		preview := msgInput
+	if msgInput.Value() != "" {
+		preview := msgInput.Value()
 		if conventional {
 			types := git.ConventionalTypes()
 			if commitType >= 0 && commitType < len(types) {
-				preview = git.FormatConventionalCommit(types[commitType], scopeInput, msgInput)
+				preview = git.FormatConventionalCommit(types[commitType], scopeInput.Value(), msgInput.Value())
 			}
 		}
 		b.WriteString(label.Render("Preview: "))
@@ -105,7 +95,8 @@ func Commit(commitType int, scopeInput, msgInput string, activeField int, conven
 	}
 
 	// Navigation hints
-	nav := "tab: next field  enter: commit  esc: cancel"
+	nav := "tab/shift+tab field  enter commit  esc cancel\n" +
+		"←→ home/end move  ctrl+w del word  ctrl+u clear"
 	b.WriteString(lipgloss.NewStyle().Foreground(t.TextDim).Render(nav))
 
 	modalWidth := 70

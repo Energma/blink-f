@@ -6,6 +6,47 @@ Fast, keyboard-driven TUI for managing git worktrees, tmux sessions, and AI agen
 ![License](https://img.shields.io/badge/license-MIT-blue)
 <img width="958" height="922" alt="image" src="https://github.com/user-attachments/assets/06bd28c3-0e6b-4a44-a4d4-3b34605effbb" />
 
+## Install
+
+One command on Linux and macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Energma/blink-f/main/install.sh | sh
+```
+
+On Windows, download the zip from the [releases page](https://github.com/Energma/blink-f/releases)
+and put `blink.exe` on your `PATH`. The binary carries its own terminal multiplexer (rmx), so
+nothing else needs installing.
+
+From then on:
+
+```bash
+blink update          # replace the binary with the latest release, rmx included
+blink update --check  # only tell me if there is one
+```
+
+Or build from source, with a `rust-mux` checkout next to this repo (needs Go and cargo):
+
+```bash
+git clone https://github.com/Energma/rust-terminal-multiplexer.git rust-mux
+git clone https://github.com/Energma/blink-f.git
+cd blink-f
+make build
+```
+
+`go install github.com/Energma/blink-f/cmd/blink@latest` also works, but that build has no rmx
+inside and needs `rmx` or `tmux` on `PATH`.
+
+### Requirements
+
+- **Git** (required)
+- **Go 1.25+** and **Rust/cargo** (for building; cargo builds the bundled [rmx](https://github.com/Energma/rust-terminal-multiplexer))
+- **tmux** (optional — only if you set `multiplexer: tmux`)
+
+Session management ships inside the binary: `make build` compiles rmx from a
+sibling `../rust-mux` checkout (override with `RMX_SRC=`) and embeds it, and
+blink unpacks it to `~/.cache/blink/rmx/` on first run. A plain `go build`
+skips the bundle and uses `rmx` or `tmux` from `PATH` instead.
 
 ## Why Blink?
 
@@ -17,26 +58,6 @@ Working on multiple branches in the same repo means juggling worktrees, terminal
 - **One keypress** to commit and push
 
 No more getting lost.
-
-## Install
-
-```bash
-go install github.com/Energma/blink-f/cmd/blink@latest
-```
-
-Or build from source:
-
-```bash
-git clone https://github.com/Energma/blink-f.git
-cd blink-f
-make build
-```
-
-### Requirements
-
-- **Git** (required)
-- **tmux** (optional — session features disabled gracefully without it)
-- **Go 1.25+** (for building)
 
 ## Usage
 
@@ -116,6 +137,8 @@ editor:
   command: code
   args: ["."]
 
+multiplexer: rmx    # or tmux; shell/auto_session below apply to both
+
 tmux:
   auto_session: true
   popup_width: "80%"
@@ -141,7 +164,19 @@ ui:
 |----------|-------------|
 | `BLINK_DEFAULT_AGENT` | Override default agent provider |
 | `BLINK_THEME` | Override UI theme |
-| `BLINK_SHELL` | Override tmux shell |
+| `BLINK_MULTIPLEXER` | Session backend: `rmx` (default) or `tmux` |
+| `BLINK_SHELL` | Override session shell |
+
+### rmx and tmux
+
+Worktree sessions are rmx workspaces with the same names tmux sessions had. Things to know:
+
+- Run blink **outside** rmx: rmx can't switch workspaces from inside one of its panes, so `enter`
+  attaches from a plain terminal and you come back to blink when you detach (Leader `d`).
+- Agents get the whole window (no automatic agent/shell split); split by hand with Leader `-`.
+
+Set `multiplexer: tmux` (or `BLINK_MULTIPLEXER=tmux`) to use tmux from `PATH` instead. tmux
+keeps the agent/shell split, `blink agent --popup`, and the `ctrl+q` key table.
 
 ## Features
 
@@ -170,7 +205,8 @@ internal/
     components/      Reusable UI pieces (status bar, worktree items, filter)
     screen/          Push/pop screen stack for modals
   git/               Git CLI wrapper with semaphore concurrency
-  tmux/              tmux session lifecycle + popup
+  tmux/              rmx + tmux session lifecycle
+  rmxbin/            embedded rmx binary, unpacked on first use
   agent/             Provider interface + registry (tool runner)
   config/            YAML config with cascade + validation
   models/            Shared data types
@@ -179,8 +215,8 @@ internal/
 
 - **Git via CLI** — respects your config, hooks, credentials. No go-git.
 - **Semaphore-bounded** concurrency for git operations.
-- **Graceful degradation** — works without tmux, session features just disable.
-- **Single binary** — ~6MB, instant startup.
+- **Graceful degradation** — if the bundled rmx can't run, session features just disable.
+- **Single binary** — multiplexer included, instant startup.
 
 ## License
 

@@ -1,0 +1,109 @@
+name: Release
+
+# Push a tag like v0.2.0 to build blink for every platform, with rmx
+# bundled inside, and publish a GitHub release. Updating a machine is then
+# one download: the binary carries its own multiplexer.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  # rmx is compiled from this exact commit of rust-mux and embedded. Bump it
+  # deliberately: a blink release pins the rmx it ships.
+  RMX_REPO: Energma/rust-terminal-multiplexer
+  RMX_REF: 663f83c90691c96db323309f92a9f085b9f6ef81
+  GO_VERSION: "1.25"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Static rmx + static Go binary: runs on any x86_64 Linux.
+          - { os: ubuntu-latest, goos: linux, goarch: amd64, rust: x86_64-unknown-linux-musl, archive: tar.gz }
+          - { os: macos-latest, goos: darwin, goarch: arm64, rust: aarch64-apple-darwin, archive: tar.gz }
+          - { os: macos-latest, goos: darwin, goarch: amd64, rust: x86_64-apple-darwin, archive: tar.gz }
+          - { os: windows-latest, goos: windows, goarch: amd64, rust: x86_64-pc-windows-msvc, archive: zip }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RMX_REPO }}
+          ref: ${{ env.RMX_REF }}
+          path: rust-mux
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust }}
+
+      - if: matrix.rust == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build rmx
+        run: cargo build --release --locked --target ${{ matrix.rust }} --manifest-path rust-mux/Cargo.toml
+
+      - name: Embed rmx
+        shell: bash
+        run: |
+          ext=""
+          [ "${{ matrix.goos }}" = windows ] && ext=".exe"
+          cp "rust-mux/target/${{ matrix.rust }}/release/rmx$ext" "internal/rmxbin/bin/rmx$ext"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build blink
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          ext=""
+          [ "$GOOS" = windows ] && ext=".exe"
+          go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "blink$ext" ./cmd/blink/
+
+      - name: Package (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          name=blink-${GITHUB_REF_NAME}-${{ matrix.goos }}-${{ matrix.goarch }}
+          mkdir "$name"
+          cp blink README.md "$name"/
+          tar czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+
+      - name: Package (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $name = "blink-$env:GITHUB_REF_NAME-${{ matrix.goos }}-${{ matrix.goarch }}"
+          New-Item -ItemType Directory $name | Out-Null
+          Copy-Item blink.exe, README.md $name
+          Compress-Archive $name "$name.zip"
+          (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Out-File "$name.zip.sha256" -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.goos }}-${{ matrix.goarch }}
+          path: blink-*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: blink-*
+          generate_release_notes: true

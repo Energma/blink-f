@@ -78,7 +78,7 @@ func WorktreeItem(wt models.Worktree, selected bool, t *theme.Theme, width int) 
 
 	// Session name if active
 	if wt.Status.TmuxSession != "" {
-		details = append(details, success.Render("tmux:"+wt.Status.TmuxSession))
+		details = append(details, success.Render("session:"+wt.Status.TmuxSession))
 	}
 
 	b.WriteString(indent + strings.Join(details, muted.Render("  |  ")))

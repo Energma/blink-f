@@ -41,3 +41,24 @@ func fuzzyMatch(target, query string) bool {
 	}
 	return qi == len(query)
 }
+
+// FilterBranches returns branches matching query, case-insensitive.
+// Substring hits come before scattered fuzzy hits so typing "main" puts
+// "main" above "maintenance-fix-in" style noise.
+func FilterBranches(branches []string, query string) []string {
+	if query == "" {
+		return branches
+	}
+	query = strings.ToLower(query)
+	var exact, fuzzy []string
+	for _, b := range branches {
+		lb := strings.ToLower(b)
+		switch {
+		case strings.Contains(lb, query):
+			exact = append(exact, b)
+		case fuzzyMatch(lb, query):
+			fuzzy = append(fuzzy, b)
+		}
+	}
+	return append(exact, fuzzy...)
+}

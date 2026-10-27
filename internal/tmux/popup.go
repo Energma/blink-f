@@ -9,8 +9,8 @@ import (
 // DisplayPopup opens a tmux popup running the given command.
 // Only works when inside a tmux session.
 func (s *Service) DisplayPopup(ctx context.Context, command, dir string) error {
-	if !s.available {
-		return fmt.Errorf("tmux not available")
+	if s.backend != BackendTmux || !s.available {
+		return fmt.Errorf("popups need tmux")
 	}
 	if !InsideTmux() {
 		return fmt.Errorf("tmux popup requires an active tmux session")
@@ -26,7 +26,10 @@ func (s *Service) DisplayPopup(ctx context.Context, command, dir string) error {
 	return exec.CommandContext(ctx, "tmux", args...).Run()
 }
 
-// SendKeys sends key sequences to a tmux session.
+// SendKeys sends key sequences to a session, followed by Enter.
 func (s *Service) SendKeys(ctx context.Context, session, keys string) error {
+	if s.backend == BackendRmx {
+		return exec.CommandContext(ctx, s.bin, "send", "-t", session, "-e", keys).Run()
+	}
 	return exec.CommandContext(ctx, "tmux", "send-keys", "-t", session, keys, "Enter").Run()
 }
