@@ -6,18 +6,6 @@ Fast, keyboard-driven TUI for managing git worktrees, tmux sessions, and AI agen
 ![License](https://img.shields.io/badge/license-MIT-blue)
 <img width="958" height="922" alt="image" src="https://github.com/user-attachments/assets/06bd28c3-0e6b-4a44-a4d4-3b34605effbb" />
 
-
-## Why Blink?
-
-Working on multiple branches in the same repo means juggling worktrees, terminal sessions, and AI coding tools across scattered windows. Blink puts it all in one fast interface:
-
-- **One keypress** to create a worktree with a tmux session
-- **One keypress** to switch between worktrees
-- **One keypress** to launch Claude, OpenCode, or aider in the right directory
-- **One keypress** to commit and push
-
-No more getting lost.
-
 ## Install
 
 One command on Linux and macOS:
@@ -59,6 +47,17 @@ Session management ships inside the binary: `make build` compiles rmx from a
 sibling `../rust-mux` checkout (override with `RMX_SRC=`) and embeds it, and
 blink unpacks it to `~/.cache/blink/rmx/` on first run. A plain `go build`
 skips the bundle and uses `rmx` or `tmux` from `PATH` instead.
+
+## Why Blink?
+
+Working on multiple branches in the same repo means juggling worktrees, terminal sessions, and AI coding tools across scattered windows. Blink puts it all in one fast interface:
+
+- **One keypress** to create a worktree with a tmux session
+- **One keypress** to switch between worktrees
+- **One keypress** to launch Claude, OpenCode, or aider in the right directory
+- **One keypress** to commit and push
+
+No more getting lost.
 
 ## Usage
 
