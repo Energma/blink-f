@@ -128,17 +128,3 @@ func (s *Service) rmxExists(name string) bool {
 	}
 	return false
 }
-
-func (s *Service) rmxDetailed(ctx context.Context) []SessionInfo {
-	ws := s.rmxWorkspaces(ctx)
-	infos := make([]SessionInfo, 0, len(ws))
-	for _, w := range ws {
-		infos = append(infos, SessionInfo{
-			Name:     w.Name,
-			Path:     w.cwd(),
-			Windows:  len(w.Tabs),
-			Attached: w.Attached > 0,
-		})
-	}
-	return infos
-}
