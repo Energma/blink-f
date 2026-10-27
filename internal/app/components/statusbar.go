@@ -169,7 +169,7 @@ func NavHints(t *theme.Theme, activeScreen screen.Type, activePane PaneID) strin
 	case screen.WorktreeCreate:
 		return join(h("tab", "field"), h("C-b", "branches"), h("enter", "create"), h("esc", "cancel"))
 	case screen.BranchSelect:
-		return join(h("j/k", "move"), h("g/G", "top/bottom"), h("enter", "select"), h("esc", "cancel"))
+		return join(h("type", "filter"), h("↑/↓", "move"), h("enter", "select"), h("esc", "clear/cancel"))
 	case screen.Commit:
 		return join(h("tab", "field"), h("</>", "type"), h("enter", "commit"), h("esc", "cancel"))
 	case screen.Confirm:

@@ -26,7 +26,7 @@ func (s *remoteServer) handleSessionWS(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
 	cfg, _ := config.Load()
-	tmuxSvc := tmux.NewService(cfg)
+	tmuxSvc := tmux.NewServiceFor(cfg, tmux.BackendTmux)
 	if !tmuxSvc.IsAvailable() {
 		http.Error(w, "tmux not available", http.StatusServiceUnavailable)
 		return

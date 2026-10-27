@@ -52,3 +52,30 @@ func TestExpandHome(t *testing.T) {
 	assert.NotEqual(t, "~/test", expanded)
 	assert.Contains(t, expanded, "test")
 }
+
+func TestValidateMultiplexer(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		want    string
+		wantErr bool
+	}{
+		{"tmux", "tmux", "tmux", false},
+		{"rmx", "rmx", "rmx", false},
+		{"empty defaults to tmux", "", "tmux", false},
+		{"unknown rejected", "screen", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.Multiplexer = tt.value
+			err := Validate(cfg)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cfg.Multiplexer)
+		})
+	}
+}

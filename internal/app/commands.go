@@ -105,7 +105,7 @@ func (m *Model) switchWorktreeCmd(wt models.Worktree) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 		if !m.tmux.IsAvailable() {
-			return errMsg{err: fmt.Errorf("tmux not available — install with: sudo pacman -S tmux")}
+			return errMsg{err: fmt.Errorf("%s not found on PATH", m.tmux.Backend())}
 		}
 		repoName := filepath.Base(wt.RepoDir)
 		name, err := m.tmux.EnsureSession(ctx, repoName, wt.Branch, wt.Path)
@@ -119,13 +119,11 @@ func (m *Model) switchWorktreeCmd(wt models.Worktree) tea.Cmd {
 	}
 }
 
-// switchTmuxClientCmd runs switch-client inside tmux (non-blocking).
+// switchTmuxClientCmd moves the current client to another session (non-blocking).
 func (m *Model) switchTmuxClientCmd(name string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
-		err := exec.CommandContext(ctx, "tmux", "switch-client", "-t", name).Run()
-		if err != nil {
-			return errMsg{err: fmt.Errorf("switch to %s: %w", name, err)}
+		if err := m.tmux.SwitchClient(context.Background(), name); err != nil {
+			return errMsg{err: err}
 		}
 		return tmuxSessionReturnedMsg{}
 	}

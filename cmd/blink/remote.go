@@ -80,7 +80,7 @@ type machineInfo struct {
 
 func gatherMachineInfo(ctx context.Context) machineInfo {
 	cfg, _ := config.Load()
-	tmuxSvc := tmux.NewService(cfg)
+	tmuxSvc := tmux.NewServiceFor(cfg, tmux.BackendTmux)
 
 	hostname, _ := os.Hostname()
 	username := ""
@@ -102,7 +102,7 @@ func gatherMachineInfo(ctx context.Context) machineInfo {
 
 func listSessionInfos(ctx context.Context) ([]tmux.SessionInfo, error) {
 	cfg, _ := config.Load()
-	sessions, err := tmux.NewService(cfg).ListSessionsDetailed(ctx)
+	sessions, err := tmux.NewServiceFor(cfg, tmux.BackendTmux).ListSessionsDetailed(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
@@ -267,7 +267,7 @@ func spawnSession(ctx context.Context, repo, branch, base string) (spawnResult, 
 	if err != nil {
 		return spawnResult{}, fmt.Errorf("create worktree: %w", err)
 	}
-	session, err := tmux.NewService(cfg).EnsureSession(ctx, filepath.Base(root), branch, wt.Path)
+	session, err := tmux.NewServiceFor(cfg, tmux.BackendTmux).EnsureSession(ctx, filepath.Base(root), branch, wt.Path)
 	if err != nil {
 		return spawnResult{}, fmt.Errorf("create session: %w", err)
 	}
@@ -306,7 +306,7 @@ func launchTUI(ctx context.Context, dir string) (spawnResult, error) {
 	}
 
 	cfg, _ := config.Load()
-	svc := tmux.NewService(cfg)
+	svc := tmux.NewServiceFor(cfg, tmux.BackendTmux)
 	name := uniqueName(svc, sessionBase("blink-tui", dir))
 
 	session, err := svc.EnsureProgramSession(ctx, name, dir, exe)
@@ -325,7 +325,7 @@ func runProgram(ctx context.Context, dir, command, label string) (spawnResult, e
 		dir, _ = os.UserHomeDir()
 	}
 	cfg, _ := config.Load()
-	svc := tmux.NewService(cfg)
+	svc := tmux.NewServiceFor(cfg, tmux.BackendTmux)
 
 	if command == "" {
 		if command = cfg.Tmux.Shell; command == "" {
@@ -346,7 +346,7 @@ func runProgram(ctx context.Context, dir, command, label string) (spawnResult, e
 
 func killSession(ctx context.Context, session string) error {
 	cfg, _ := config.Load()
-	tmuxSvc := tmux.NewService(cfg)
+	tmuxSvc := tmux.NewServiceFor(cfg, tmux.BackendTmux)
 
 	if !tmuxSvc.SessionExists(session) {
 		return fmt.Errorf("session not found: %s", session)

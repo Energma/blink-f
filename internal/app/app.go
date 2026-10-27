@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -57,19 +56,22 @@ type Model struct {
 	screenMgr *screen.Manager
 
 	// Create form
-	createBranch string
-	createBase   string
+	createBranch components.TextInput
+	createBase   components.TextInput
 	createField  int // 0=branch name, 1=base branch
 
 	// Branch select
-	branches       []string
-	branchCursor   int
-	branchForCreate bool // true = pick base branch for create, false = checkout
+	branches        []string
+	branchMatches   []string // branches filtered by branchFilter, what the list shows
+	branchFilter    components.TextInput
+	branchCursor    int
+	branchCurrent   string // branch checked out in the target worktree, marked in the list
+	branchForCreate bool   // true = pick base branch for create, false = checkout
 
 	// Commit form
 	commitType    int
-	commitScope   string
-	commitMsg     string
+	commitScope   components.TextInput
+	commitMsg     components.TextInput
 	commitField   int // 0=type, 1=scope, 2=msg
 	commitFiles   []string
 
@@ -229,8 +231,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.statusText = "Created worktree: " + msg.worktree.Branch
 		m.screenMgr.Pop()
-		m.createBranch = ""
-		m.createBase = ""
+		m.createBranch.Reset()
+		m.createBase.Reset()
 		return m, tea.Batch(m.loadWorktreesCmd(), m.checkTmuxCmd(), m.clearStatusCmd())
 
 	case worktreeDeletedMsg:
@@ -247,8 +249,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case commitResultMsg:
 		m.screenMgr.Pop()
-		m.commitMsg = ""
-		m.commitScope = ""
+		m.commitMsg.Reset()
+		m.commitScope.Reset()
 		m.commitType = 0
 		m.commitField = 0
 		m.commitFiles = nil
@@ -307,13 +309,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return statusMsg("Agent exited")
 			})
 		}
-		// Switch to agent tmux session.
+		// Switch to agent session.
 		if msg.sessionID != "" {
-			if tmux.InsideTmux() {
+			if m.tmux.Inside() {
 				return m, m.switchTmuxClientCmd(msg.sessionID)
 			}
-			attachCmd := exec.Command("tmux", "attach-session", "-t", msg.sessionID)
-			return m, tea.ExecProcess(attachCmd, func(err error) tea.Msg {
+			return m, tea.ExecProcess(m.tmux.AttachCmd(msg.sessionID), func(err error) tea.Msg {
 				return agentSessionReturnedMsg{}
 			})
 		}
@@ -337,13 +338,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errText = msg.err.Error()
 			return m, m.clearStatusCmd()
 		}
-		if tmux.InsideTmux() {
-			// Non-blocking: tell tmux server to switch client
+		if m.tmux.Inside() {
+			// Non-blocking: tell the multiplexer to switch client
 			return m, m.switchTmuxClientCmd(msg.sessionName)
 		}
-		// Outside tmux: suspend TUI and attach to the session
-		attachCmd := exec.Command("tmux", "attach-session", "-t", msg.sessionName)
-		return m, tea.ExecProcess(attachCmd, func(err error) tea.Msg {
+		// Outside the multiplexer: suspend TUI and attach to the session
+		return m, tea.ExecProcess(m.tmux.AttachCmd(msg.sessionName), func(err error) tea.Msg {
 			return tmuxSessionReturnedMsg{}
 		})
 
@@ -381,7 +381,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.clearStatusCmd()
 		}
 		m.branches = msg.branches
-		m.branchCursor = 0
+		m.applyBranchFilter()
+		return m, nil
+
+	case tea.PasteMsg:
+		if in := m.focusedInput(); in != nil {
+			in.Insert(msg.Content)
+			if in == &m.branchFilter {
+				m.applyBranchFilter()
+			}
+		}
 		return m, nil
 
 	case branchCheckedOutMsg:
@@ -579,9 +588,9 @@ func (m *Model) View() tea.View {
 	case screen.Help:
 		overlay = views.Help(m.theme, m.width, m.height, m.helpScroll)
 	case screen.WorktreeCreate:
-		overlay = views.Create(m.createBranch, m.createBase, m.createField, m.theme, m.width)
+		overlay = views.Create(&m.createBranch, &m.createBase, m.createField, m.theme, m.width)
 	case screen.Commit:
-		overlay = views.Commit(m.commitType, m.commitScope, m.commitMsg, m.commitField, m.cfg.Git.ConventionalCommits, m.commitFiles, m.theme, m.width)
+		overlay = views.Commit(m.commitType, &m.commitScope, &m.commitMsg, m.commitField, m.cfg.Git.ConventionalCommits, m.commitFiles, m.theme, m.width)
 	case screen.AgentSelect:
 		overlay = views.AgentSelect(m.agentProviders, m.agentAvailable, m.agentCursor, m.theme, m.width)
 	case screen.Confirm:
@@ -591,7 +600,7 @@ func (m *Model) View() tea.View {
 	case screen.Sessions:
 		overlay = views.Sessions(m.sessionInfos, m.sessionCursor, m.theme, m.width, m.height)
 	case screen.BranchSelect:
-		overlay = views.BranchSelect(m.branches, m.branchCursor, m.theme, m.width, m.height)
+		overlay = views.BranchSelect(m.branchMatches, len(m.branches), &m.branchFilter, m.branchCurrent, m.branchCursor, m.theme, m.width, m.height)
 	case screen.WorktreeDetail:
 		wt := m.selectedWorktree()
 		if wt != nil {
