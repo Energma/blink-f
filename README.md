@@ -20,17 +20,26 @@ No more getting lost.
 
 ## Install
 
+Grab the archive for your platform from the [releases page](https://github.com/Energma/blink-f/releases),
+unpack it, and put `blink` on your `PATH`. The binary carries its own terminal multiplexer
+(rmx), so nothing else needs installing. Updating is the same download again.
+
 ```bash
-go install github.com/Energma/blink-f/cmd/blink@latest
+tar xzf blink-v*-linux-amd64.tar.gz
+sudo install blink-v*-linux-amd64/blink /usr/local/bin/blink
 ```
 
-Or build from source:
+Or build from source, with a `rust-mux` checkout next to this repo (needs Go and cargo):
 
 ```bash
+git clone https://github.com/Energma/rust-terminal-multiplexer.git rust-mux
 git clone https://github.com/Energma/blink-f.git
 cd blink-f
 make build
 ```
+
+`go install github.com/Energma/blink-f/cmd/blink@latest` also works, but that build has no rmx
+inside and needs `rmx` or `tmux` on `PATH`.
 
 ### Requirements
 
