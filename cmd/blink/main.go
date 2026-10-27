@@ -79,6 +79,7 @@ func main() {
 				Usage:  "List all worktrees",
 				Action: listWorktrees,
 			},
+			updateCommand(),
 		},
 	}
 

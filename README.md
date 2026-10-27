@@ -20,13 +20,21 @@ No more getting lost.
 
 ## Install
 
-Grab the archive for your platform from the [releases page](https://github.com/Energma/blink-f/releases),
-unpack it, and put `blink` on your `PATH`. The binary carries its own terminal multiplexer
-(rmx), so nothing else needs installing. Updating is the same download again.
+One command on Linux and macOS:
 
 ```bash
-tar xzf blink-v*-linux-amd64.tar.gz
-sudo install blink-v*-linux-amd64/blink /usr/local/bin/blink
+curl -fsSL https://raw.githubusercontent.com/Energma/blink-f/main/install.sh | sh
+```
+
+On Windows, download the zip from the [releases page](https://github.com/Energma/blink-f/releases)
+and put `blink.exe` on your `PATH`. The binary carries its own terminal multiplexer (rmx), so
+nothing else needs installing.
+
+From then on:
+
+```bash
+blink update          # replace the binary with the latest release, rmx included
+blink update --check  # only tell me if there is one
 ```
 
 Or build from source, with a `rust-mux` checkout next to this repo (needs Go and cargo):
