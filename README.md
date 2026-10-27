@@ -35,8 +35,13 @@ make build
 ### Requirements
 
 - **Git** (required)
-- **tmux** or **[rmx](https://github.com/Energma/rust-terminal-multiplexer)** (optional — session features disabled gracefully without one)
-- **Go 1.25+** (for building)
+- **Go 1.25+** and **Rust/cargo** (for building; cargo builds the bundled [rmx](https://github.com/Energma/rust-terminal-multiplexer))
+- **tmux** (optional — only if you set `multiplexer: tmux`)
+
+Session management ships inside the binary: `make build` compiles rmx from a
+sibling `../rust-mux` checkout (override with `RMX_SRC=`) and embeds it, and
+blink unpacks it to `~/.cache/blink/rmx/` on first run. A plain `go build`
+skips the bundle and uses `rmx` or `tmux` from `PATH` instead.
 
 ## Usage
 
@@ -116,7 +121,7 @@ editor:
   command: code
   args: ["."]
 
-multiplexer: tmux   # or rmx; shell/auto_session below apply to both
+multiplexer: rmx    # or tmux; shell/auto_session below apply to both
 
 tmux:
   auto_session: true
@@ -143,18 +148,19 @@ ui:
 |----------|-------------|
 | `BLINK_DEFAULT_AGENT` | Override default agent provider |
 | `BLINK_THEME` | Override UI theme |
-| `BLINK_MULTIPLEXER` | Session backend: `tmux` or `rmx` |
+| `BLINK_MULTIPLEXER` | Session backend: `rmx` (default) or `tmux` |
 | `BLINK_SHELL` | Override session shell |
 
-### Using rmx instead of tmux
+### rmx and tmux
 
-Set `multiplexer: rmx` (or `BLINK_MULTIPLEXER=rmx`); `rmx` must be on `PATH`. Worktree sessions
-become rmx workspaces with the same names. Differences from tmux:
+Worktree sessions are rmx workspaces with the same names tmux sessions had. Things to know:
 
 - Run blink **outside** rmx: rmx can't switch workspaces from inside one of its panes, so `enter`
   attaches from a plain terminal and you come back to blink when you detach (Leader `d`).
 - Agents get the whole window (no automatic agent/shell split); split by hand with Leader `-`.
-- `blink agent --popup` and the `ctrl+q` key table are tmux-only.
+
+Set `multiplexer: tmux` (or `BLINK_MULTIPLEXER=tmux`) to use tmux from `PATH` instead. tmux
+keeps the agent/shell split, `blink agent --popup`, and the `ctrl+q` key table.
 
 ## Features
 
@@ -183,7 +189,8 @@ internal/
     components/      Reusable UI pieces (status bar, worktree items, filter)
     screen/          Push/pop screen stack for modals
   git/               Git CLI wrapper with semaphore concurrency
-  tmux/              tmux session lifecycle + popup
+  tmux/              rmx + tmux session lifecycle
+  rmxbin/            embedded rmx binary, unpacked on first use
   agent/             Provider interface + registry (tool runner)
   config/            YAML config with cascade + validation
   models/            Shared data types
@@ -192,8 +199,8 @@ internal/
 
 - **Git via CLI** — respects your config, hooks, credentials. No go-git.
 - **Semaphore-bounded** concurrency for git operations.
-- **Graceful degradation** — works without tmux, session features just disable.
-- **Single binary** — ~6MB, instant startup.
+- **Graceful degradation** — if the bundled rmx can't run, session features just disable.
+- **Single binary** — multiplexer included, instant startup.
 
 ## License
 

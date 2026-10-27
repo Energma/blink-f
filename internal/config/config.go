@@ -9,9 +9,8 @@ import (
 )
 
 type Config struct {
-	// Multiplexer selects the session backend: "tmux" or "rmx"
-	// (github.com/Energma/rust-terminal-multiplexer). The tmux: block's
-	// shell and auto_session apply to both.
+	// Multiplexer selects the session backend: "rmx" (bundled, the default)
+	// or "tmux". The tmux: block's shell and auto_session apply to both.
 	Multiplexer string `yaml:"multiplexer"`
 
 	Repos    []RepoConfig   `yaml:"repos"`
@@ -88,7 +87,7 @@ type KeyConfig struct {
 
 func Default() *Config {
 	return &Config{
-		Multiplexer: "tmux",
+		Multiplexer: "rmx",
 		Agents: AgentConfig{
 			Default: "claude",
 			Providers: map[string]ProviderConfig{

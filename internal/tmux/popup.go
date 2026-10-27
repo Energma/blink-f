@@ -29,7 +29,7 @@ func (s *Service) DisplayPopup(ctx context.Context, command, dir string) error {
 // SendKeys sends key sequences to a session, followed by Enter.
 func (s *Service) SendKeys(ctx context.Context, session, keys string) error {
 	if s.backend == BackendRmx {
-		return exec.CommandContext(ctx, "rmx", "send", "-t", session, "-e", keys).Run()
+		return exec.CommandContext(ctx, s.bin, "send", "-t", session, "-e", keys).Run()
 	}
 	return exec.CommandContext(ctx, "tmux", "send-keys", "-t", session, keys, "Enter").Run()
 }

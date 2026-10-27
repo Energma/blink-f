@@ -1,5 +1,7 @@
-# Binary
+# Binaries
 /blink
+/internal/rmxbin/bin/rmx
+/internal/rmxbin/bin/rmx.exe
 
 # Go
 *.exe

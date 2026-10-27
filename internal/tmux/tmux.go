@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/Energma/blink-f/internal/config"
+	"github.com/Energma/blink-f/internal/rmxbin"
 )
 
 // Backends a Service can drive. Both are plain CLIs run via os/exec.
@@ -15,33 +16,37 @@ const (
 	BackendRmx  = "rmx"
 )
 
-// Service wraps terminal multiplexer CLI operations. It speaks tmux by
-// default and rmx (github.com/Energma/rust-terminal-multiplexer) when
-// configured; callers stay backend-agnostic except where a feature only
-// exists in tmux (popups, split panes, switch-client).
+// Service wraps terminal multiplexer CLI operations. It speaks rmx
+// (github.com/Energma/rust-terminal-multiplexer, bundled in the blink
+// binary) by default and tmux when configured; callers stay
+// backend-agnostic except where a feature only exists in tmux (popups,
+// split panes, switch-client).
 type Service struct {
 	cfg       *config.TmuxConfig
 	backend   string
+	bin       string // executable to run; empty when unavailable
 	available bool
 }
 
 // NewService creates a Service for the configured multiplexer.
 func NewService(cfg *config.Config) *Service {
-	return NewServiceFor(cfg, cfg.Multiplexer)
-}
-
-// NewServiceFor creates a Service for an explicit backend. The remote
-// control server uses this to stay on tmux, which it attaches to directly.
-func NewServiceFor(cfg *config.Config, backend string) *Service {
+	backend := cfg.Multiplexer
 	if backend == "" {
-		backend = BackendTmux
+		backend = BackendRmx
 	}
-	_, err := exec.LookPath(backend)
+	var bin string
+	var err error
+	if backend == BackendRmx {
+		bin, err = rmxbin.Path()
+	} else {
+		bin, err = exec.LookPath("tmux")
+	}
 	// Pass editor command to tmux config for ctrl+q e binding.
 	cfg.Tmux.EditorCmd = cfg.Editor.Command
 	return &Service{
 		cfg:       &cfg.Tmux,
 		backend:   backend,
+		bin:       bin,
 		available: err == nil,
 	}
 }
@@ -51,7 +56,8 @@ func (s *Service) Backend() string {
 	return s.backend
 }
 
-// IsAvailable returns true if the backend is installed and on PATH.
+// IsAvailable returns true if the backend can be run: rmx is bundled or on
+// PATH, tmux is on PATH.
 func (s *Service) IsAvailable() bool {
 	return s.available
 }
@@ -73,7 +79,7 @@ func InsideTmux() bool {
 // caller runs it with tea.ExecProcess so the TUI is suspended meanwhile.
 func (s *Service) AttachCmd(name string) *exec.Cmd {
 	if s.backend == BackendRmx {
-		return exec.Command("rmx", "attach", name)
+		return exec.Command(s.bin, "attach", name)
 	}
 	return exec.Command("tmux", "attach-session", "-t", name)
 }

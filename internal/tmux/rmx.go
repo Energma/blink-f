@@ -10,8 +10,9 @@ import (
 	"strings"
 )
 
-// rmx calls the rmx CLI, which talks to its background server over a local
-// socket. Workspaces play the role of tmux sessions.
+// rmx calls the rmx CLI (s.bin, normally the copy bundled by internal/rmxbin),
+// which talks to its background server over a local socket. Workspaces play
+// the role of tmux sessions.
 
 // insideRmx reports whether this process runs in an rmx pane. rmx sets RMX=1
 // in every pane and uses it to refuse nested attaches.
@@ -73,7 +74,7 @@ func (s *Service) rmxWorkspaces(ctx context.Context) []rmxWorkspace {
 	if !s.available {
 		return nil
 	}
-	out, err := exec.CommandContext(ctx, "rmx", "list", "--json").Output()
+	out, err := exec.CommandContext(ctx, s.bin, "list", "--json").Output()
 	if err != nil {
 		return nil
 	}
@@ -100,7 +101,7 @@ func (s *Service) rmxNew(ctx context.Context, name, dir, command string) error {
 		args = append(args, "--", command)
 	}
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "rmx", args...)
+	cmd := exec.CommandContext(ctx, s.bin, args...)
 	cmd.Env = os.Environ()
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -114,7 +115,7 @@ func (s *Service) rmxNew(ctx context.Context, name, dir, command string) error {
 		return fmt.Errorf("parse rmx new: %w", err)
 	}
 	if created.Name != name {
-		_ = exec.CommandContext(ctx, "rmx", "close", created.Name).Run()
+		_ = exec.CommandContext(ctx, s.bin, "close", created.Name).Run()
 		return fmt.Errorf("rmx workspace %q already exists", name)
 	}
 	return nil
