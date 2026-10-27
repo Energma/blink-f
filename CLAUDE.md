@@ -27,7 +27,7 @@ go test -v -run TestParseWorktree ./internal/git/  # Specific test
 - **CLI**: urfave/cli/v3 for subcommands
 - **Git**: CLI wrapper via os/exec (NOT go-git) — respects user's config, hooks, credentials
 - **Config**: YAML with 5-level cascade (flags > env > local > global > defaults)
-- **tmux**: Session management via os/exec — graceful degradation when unavailable
+- **tmux / rmx**: Session management via os/exec (`multiplexer:` config picks the backend; `blink serve` is tmux-only) — graceful degradation when unavailable
 
 ## Key Patterns
 - All git operations go through `internal/git/Service` with semaphore concurrency control

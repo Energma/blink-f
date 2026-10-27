@@ -35,7 +35,7 @@ make build
 ### Requirements
 
 - **Git** (required)
-- **tmux** (optional — session features disabled gracefully without it)
+- **tmux** or **[rmx](https://github.com/Energma/rust-terminal-multiplexer)** (optional — session features disabled gracefully without one)
 - **Go 1.25+** (for building)
 
 ## Usage
@@ -116,6 +116,8 @@ editor:
   command: code
   args: ["."]
 
+multiplexer: tmux   # or rmx; shell/auto_session below apply to both
+
 tmux:
   auto_session: true
   popup_width: "80%"
@@ -141,7 +143,19 @@ ui:
 |----------|-------------|
 | `BLINK_DEFAULT_AGENT` | Override default agent provider |
 | `BLINK_THEME` | Override UI theme |
-| `BLINK_SHELL` | Override tmux shell |
+| `BLINK_MULTIPLEXER` | Session backend: `tmux` or `rmx` |
+| `BLINK_SHELL` | Override session shell |
+
+### Using rmx instead of tmux
+
+Set `multiplexer: rmx` (or `BLINK_MULTIPLEXER=rmx`); `rmx` must be on `PATH`. Worktree sessions
+become rmx workspaces with the same names. Differences from tmux:
+
+- Run blink **outside** rmx: rmx can't switch workspaces from inside one of its panes, so `enter`
+  attaches from a plain terminal and you come back to blink when you detach (Leader `d`).
+- Agents get the whole window (no automatic agent/shell split); split by hand with Leader `-`.
+- `blink agent --popup` and the `ctrl+q` key table are tmux-only.
+- `blink serve` (remote control) always uses tmux.
 
 ## Features
 

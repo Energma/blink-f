@@ -39,7 +39,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case screen.Sessions:
 		return m.handleSessionsKey(key)
 	case screen.BranchSelect:
-		return m.handleBranchSelectKey(key)
+		return m.handleBranchSelectKey(msg)
 	}
 
 	// Filter mode
@@ -106,17 +106,15 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "n":
-		m.createBranch = ""
-		m.createBase = ""
+		m.createBranch.Reset()
+		m.createBase.Reset()
 		m.createField = 0
 		m.screenMgr.Push(screen.WorktreeCreate)
 
 	case "b":
 		// Open branch selector to checkout a different branch
 		if wt := m.selectedWorktree(); wt != nil {
-			m.branchForCreate = false
-			m.screenMgr.Push(screen.BranchSelect)
-			return m, m.loadBranchesCmd()
+			return m, m.openBranchSelect(false, wt.Branch)
 		}
 
 	case "d":
@@ -154,8 +152,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "c":
 		m.commitType = 0
-		m.commitScope = ""
-		m.commitMsg = ""
+		m.commitScope.Reset()
+		m.commitMsg.Reset()
 		m.commitField = 0
 		m.commitFiles = nil
 		if !m.cfg.Git.ConventionalCommits {
@@ -438,39 +436,24 @@ func (m *Model) handleHelpKey(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleCreateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-	switch key {
+	switch msg.String() {
 	case "esc":
 		m.screenMgr.Pop()
 		m.createField = 0
 	case "enter":
-		if m.createBranch != "" {
-			return m, m.createWorktreeCmd(m.createBranch, m.createBase)
+		if m.createBranch.Value() != "" {
+			return m, m.createWorktreeCmd(m.createBranch.Value(), m.createBase.Value())
 		}
-	case "tab":
+	case "tab", "shift+tab", "up", "down":
 		m.createField = (m.createField + 1) % 2
-	case "backspace":
-		if m.createField == 0 {
-			if len(m.createBranch) > 0 {
-				m.createBranch = m.createBranch[:len(m.createBranch)-1]
-			}
-		} else {
-			if len(m.createBase) > 0 {
-				m.createBase = m.createBase[:len(m.createBase)-1]
-			}
-		}
 	case "ctrl+b":
 		// Open branch picker for base branch
-		m.branchForCreate = true
-		m.screenMgr.Push(screen.BranchSelect)
-		return m, m.loadBranchesCmd()
+		return m, m.openBranchSelect(true, "")
 	default:
-		if len(key) == 1 && key[0] >= ' ' {
-			if m.createField == 0 {
-				m.createBranch += key
-			} else {
-				m.createBase += key
-			}
+		if m.createField == 0 {
+			m.createBranch.HandleKey(msg)
+		} else {
+			m.createBase.HandleKey(msg)
 		}
 	}
 	return m, nil
@@ -487,64 +470,48 @@ func (m *Model) handleCommitKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc":
 		m.screenMgr.Pop()
-	case "tab":
+		return m, nil
+	case "tab", "down":
 		m.commitField = (m.commitField + 1) % (maxField + 1)
+		return m, nil
+	case "shift+tab", "up":
+		m.commitField = (m.commitField + maxField) % (maxField + 1)
+		return m, nil
 	case "enter":
-		if m.commitMsg != "" {
-			var message string
+		if m.commitMsg.Value() != "" {
+			message := m.commitMsg.Value()
 			if m.cfg.Git.ConventionalCommits {
 				types := git.ConventionalTypes()
 				if m.commitType >= 0 && m.commitType < len(types) {
-					message = git.FormatConventionalCommit(types[m.commitType], m.commitScope, m.commitMsg)
-				} else {
-					message = m.commitMsg
+					message = git.FormatConventionalCommit(types[m.commitType], m.commitScope.Value(), message)
 				}
-			} else {
-				message = m.commitMsg
 			}
 			return m, m.commitCmd(message)
 		}
-	case "left":
-		if m.commitField == 0 && m.cfg.Git.ConventionalCommits {
+		return m, nil
+	}
+
+	if !m.cfg.Git.ConventionalCommits {
+		m.commitMsg.HandleKey(msg)
+		return m, nil
+	}
+
+	switch m.commitField {
+	case 0:
+		switch key {
+		case "left", "h":
 			if m.commitType > 0 {
 				m.commitType--
 			}
-		}
-	case "right":
-		if m.commitField == 0 && m.cfg.Git.ConventionalCommits {
-			types := git.ConventionalTypes()
-			if m.commitType < len(types)-1 {
+		case "right", "l":
+			if m.commitType < len(git.ConventionalTypes())-1 {
 				m.commitType++
 			}
 		}
-	case "backspace":
-		switch m.commitField {
-		case 1:
-			if len(m.commitScope) > 0 {
-				m.commitScope = m.commitScope[:len(m.commitScope)-1]
-			}
-		case 2:
-			if len(m.commitMsg) > 0 {
-				m.commitMsg = m.commitMsg[:len(m.commitMsg)-1]
-			}
-		case 0:
-			if !m.cfg.Git.ConventionalCommits && len(m.commitMsg) > 0 {
-				m.commitMsg = m.commitMsg[:len(m.commitMsg)-1]
-			}
-		}
-	default:
-		if len(key) == 1 && key[0] >= ' ' {
-			switch m.commitField {
-			case 1:
-				m.commitScope += key
-			case 2:
-				m.commitMsg += key
-			case 0:
-				if !m.cfg.Git.ConventionalCommits {
-					m.commitMsg += key
-				}
-			}
-		}
+	case 1:
+		m.commitScope.HandleKey(msg)
+	case 2:
+		m.commitMsg.HandleKey(msg)
 	}
 	return m, nil
 }
@@ -615,9 +582,7 @@ func (m *Model) handleDetailKey(key string) (tea.Model, tea.Cmd) {
 	case "b":
 		// Switch branch from detail view
 		if wt := m.selectedWorktree(); wt != nil {
-			m.branchForCreate = false
-			m.screenMgr.Push(screen.BranchSelect)
-			return m, m.loadBranchesCmd()
+			return m, m.openBranchSelect(false, wt.Branch)
 		}
 	case "e":
 		// Open editor from detail view
@@ -638,8 +603,8 @@ func (m *Model) handleDetailKey(key string) (tea.Model, tea.Cmd) {
 		if m.selectedWorktree() != nil {
 			m.screenMgr.Pop()
 			m.commitType = 0
-			m.commitScope = ""
-			m.commitMsg = ""
+			m.commitScope.Reset()
+			m.commitMsg.Reset()
 			m.commitField = 0
 			m.commitFiles = nil
 			if !m.cfg.Git.ConventionalCommits {
@@ -709,45 +674,108 @@ func (m *Model) handleSessionsKey(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleBranchSelectKey(key string) (tea.Model, tea.Cmd) {
-	switch key {
+// openBranchSelect resets the picker and loads branches. current is the
+// branch already checked out in the target worktree ("" when picking a base).
+func (m *Model) openBranchSelect(forCreate bool, current string) tea.Cmd {
+	m.branchForCreate = forCreate
+	m.branchCurrent = current
+	m.branchFilter.Reset()
+	m.branches = nil
+	m.applyBranchFilter()
+	m.screenMgr.Push(screen.BranchSelect)
+	return m.loadBranchesCmd()
+}
+
+// applyBranchFilter recomputes the visible branches. The cursor goes back to
+// the top so enter always picks the best match for what was typed.
+func (m *Model) applyBranchFilter() {
+	m.branchMatches = components.FilterBranches(m.branches, m.branchFilter.Value())
+	m.branchCursor = 0
+}
+
+// handleBranchSelectKey treats printable keys as filter input, so list
+// navigation uses arrows, tab, or ctrl+n / ctrl+p instead of j/k.
+func (m *Model) handleBranchSelectKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
 	case "esc":
+		// First esc clears the filter, second closes the picker.
+		if m.branchFilter.Value() != "" {
+			m.branchFilter.Reset()
+			m.applyBranchFilter()
+			return m, nil
+		}
 		m.screenMgr.Pop()
-	case "j", "down":
-		if m.branchCursor < len(m.branches)-1 {
+	case "down", "ctrl+n", "tab":
+		if m.branchCursor < len(m.branchMatches)-1 {
 			m.branchCursor++
 		}
-	case "k", "up":
+	case "up", "ctrl+p", "shift+tab":
 		if m.branchCursor > 0 {
 			m.branchCursor--
 		}
-	case "g":
-		m.branchCursor = 0
-	case "G":
-		m.branchCursor = max(0, len(m.branches)-1)
+	case "pgdown":
+		m.branchCursor = min(m.branchCursor+10, max(0, len(m.branchMatches)-1))
+	case "pgup":
+		m.branchCursor = max(0, m.branchCursor-10)
 	case "enter":
-		if m.branchCursor >= 0 && m.branchCursor < len(m.branches) {
-			selected := m.branches[m.branchCursor]
-			m.screenMgr.Pop()
-			if m.branchForCreate {
-				// Set base branch in create form
-				m.createBase = selected
-				// If not already in create form, open it
-				if m.screenMgr.Active() != screen.WorktreeCreate {
-					m.createBranch = ""
-					m.createField = 0
-					m.screenMgr.Push(screen.WorktreeCreate)
-				}
-			} else {
-				// Checkout branch on selected worktree
-				if wt := m.selectedWorktree(); wt != nil {
-					m.statusText = "Checking out " + selected + "..."
-					return m, m.checkoutBranchCmd(wt.Path, selected)
-				}
+		if m.branchCursor < 0 || m.branchCursor >= len(m.branchMatches) {
+			return m, nil
+		}
+		selected := m.branchMatches[m.branchCursor]
+		m.screenMgr.Pop()
+		if m.branchForCreate {
+			// Set base branch in create form
+			m.createBase.SetValue(selected)
+			// If not already in create form, open it
+			if m.screenMgr.Active() != screen.WorktreeCreate {
+				m.createBranch.Reset()
+				m.createField = 0
+				m.screenMgr.Push(screen.WorktreeCreate)
 			}
+			return m, nil
+		}
+		if selected == m.branchCurrent {
+			m.statusText = "Already on " + selected
+			return m, m.clearStatusCmd()
+		}
+		// Checkout branch on selected worktree
+		if wt := m.selectedWorktree(); wt != nil {
+			m.statusText = "Checking out " + selected + "..."
+			return m, m.checkoutBranchCmd(wt.Path, selected)
+		}
+	default:
+		before := m.branchFilter.Value()
+		m.branchFilter.HandleKey(msg)
+		if m.branchFilter.Value() != before {
+			m.applyBranchFilter()
 		}
 	}
 	return m, nil
+}
+
+// focusedInput returns the text field that receives typed or pasted text,
+// or nil when no field has focus.
+func (m *Model) focusedInput() *components.TextInput {
+	switch m.screenMgr.Active() {
+	case screen.WorktreeCreate:
+		if m.createField == 0 {
+			return &m.createBranch
+		}
+		return &m.createBase
+	case screen.Commit:
+		if !m.cfg.Git.ConventionalCommits {
+			return &m.commitMsg
+		}
+		switch m.commitField {
+		case 1:
+			return &m.commitScope
+		case 2:
+			return &m.commitMsg
+		}
+	case screen.BranchSelect:
+		return &m.branchFilter
+	}
+	return nil
 }
 
 func (m *Model) handleFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {

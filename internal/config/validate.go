@@ -16,6 +16,14 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	switch cfg.Multiplexer {
+	case "":
+		cfg.Multiplexer = "tmux"
+	case "tmux", "rmx":
+	default:
+		return fmt.Errorf("multiplexer %q: must be \"tmux\" or \"rmx\"", cfg.Multiplexer)
+	}
+
 	// Validate tmux popup dimensions
 	if cfg.Tmux.PopupWidth == "" {
 		cfg.Tmux.PopupWidth = "80%"

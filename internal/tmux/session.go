@@ -27,14 +27,20 @@ func (s *Service) setupBlinkKeys(ctx context.Context, editorCmd string) {
 	}
 }
 
-// SessionExists checks if a named tmux session exists.
+// SessionExists checks if a named session exists.
 func (s *Service) SessionExists(name string) bool {
+	if s.backend == BackendRmx {
+		return s.rmxExists(name)
+	}
 	cmd := exec.Command("tmux", "has-session", "-t", name)
 	return cmd.Run() == nil
 }
 
-// CreateSession creates a new detached tmux session in dir.
+// CreateSession creates a new detached session in dir.
 func (s *Service) CreateSession(ctx context.Context, name, dir string) error {
+	if s.backend == BackendRmx {
+		return s.rmxNew(ctx, name, dir, "")
+	}
 	if !s.available {
 		return fmt.Errorf("tmux not available")
 	}
@@ -51,31 +57,41 @@ func (s *Service) CreateSession(ctx context.Context, name, dir string) error {
 	return nil
 }
 
-// SwitchSession switches to an existing tmux session.
-// Uses switch-client inside tmux, attach-session outside.
+// SwitchSession switches to an existing session.
+// Uses switch-client inside the multiplexer, attach outside.
 func (s *Service) SwitchSession(ctx context.Context, name string) error {
 	if !s.available {
-		return fmt.Errorf("tmux not available")
+		return fmt.Errorf("%s not available", s.backend)
 	}
-	if InsideTmux() {
-		return exec.CommandContext(ctx, "tmux", "switch-client", "-t", name).Run()
+	if s.Inside() {
+		return s.SwitchClient(ctx, name)
 	}
-	cmd := exec.CommandContext(ctx, "tmux", "attach-session", "-t", name)
+	cmd := s.AttachCmd(name)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
-// KillSession kills a named tmux session.
+// KillSession kills a named session.
 func (s *Service) KillSession(ctx context.Context, name string) error {
+	if s.backend == BackendRmx {
+		return exec.CommandContext(ctx, "rmx", "close", name).Run()
+	}
 	return exec.CommandContext(ctx, "tmux", "kill-session", "-t", name).Run()
 }
 
-// ListSessions returns names of running tmux sessions.
+// ListSessions returns names of running sessions.
 func (s *Service) ListSessions(ctx context.Context) ([]string, error) {
 	if !s.available {
 		return nil, nil
+	}
+	if s.backend == BackendRmx {
+		var names []string
+		for _, w := range s.rmxWorkspaces(ctx) {
+			names = append(names, w.Name)
+		}
+		return names, nil
 	}
 	cmd := exec.CommandContext(ctx, "tmux", "list-sessions", "-F", "#{session_name}")
 	out, err := cmd.Output()
@@ -102,6 +118,9 @@ type SessionInfo struct {
 func (s *Service) ListSessionsDetailed(ctx context.Context) ([]SessionInfo, error) {
 	if !s.available {
 		return nil, nil
+	}
+	if s.backend == BackendRmx {
+		return s.rmxDetailed(ctx), nil
 	}
 	const format = "#{session_name}\t#{session_path}\t#{session_windows}\t#{session_attached}"
 	cmd := exec.CommandContext(ctx, "tmux", "list-sessions", "-F", format)
@@ -142,13 +161,17 @@ func SessionNameForWorktree(repoName, branch string) string {
 
 // CreateAgentSplitSession creates a tmux session with the agent in the top
 // pane and an interactive shell in the bottom pane. Idempotent: if the
-// session already exists, it is reused.
+// session already exists, it is reused. rmx can't split panes from its CLI,
+// so there the agent gets the whole window; Leader - splits it by hand.
 func (s *Service) CreateAgentSplitSession(ctx context.Context, name, dir, agentCmd string) error {
 	if !s.available {
-		return fmt.Errorf("tmux not available")
+		return fmt.Errorf("%s not available", s.backend)
 	}
 	if s.SessionExists(name) {
 		return nil
+	}
+	if s.backend == BackendRmx {
+		return s.rmxNew(ctx, name, dir, agentCmd)
 	}
 
 	// Top pane runs the agent command.
@@ -181,9 +204,15 @@ func (s *Service) CreateAgentSplitSession(ctx context.Context, name, dir, agentC
 // TUI itself so a remote client can attach to the full app on their phone.
 func (s *Service) EnsureProgramSession(ctx context.Context, name, dir, program string) (string, error) {
 	if !s.available {
-		return "", fmt.Errorf("tmux not available")
+		return "", fmt.Errorf("%s not available", s.backend)
 	}
 	if s.SessionExists(name) {
+		return name, nil
+	}
+	if s.backend == BackendRmx {
+		if err := s.rmxNew(ctx, name, dir, program); err != nil {
+			return "", err
+		}
 		return name, nil
 	}
 	args := []string{"new-session", "-d", "-s", name, "-c", dir, program}

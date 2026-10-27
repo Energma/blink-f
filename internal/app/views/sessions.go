@@ -9,7 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// SessionInfo holds display data for a tmux session.
+// SessionInfo holds display data for a multiplexer session.
 type SessionInfo struct {
 	Name      string
 	Worktree  *models.Worktree // nil if orphaned
@@ -17,7 +17,7 @@ type SessionInfo struct {
 	Attached  bool
 }
 
-// Sessions renders the tmux session management panel.
+// Sessions renders the session management panel.
 func Sessions(sessions []SessionInfo, cursor int, t *theme.Theme, width, height int) string {
 	title := lipgloss.NewStyle().
 		Bold(true).
@@ -36,7 +36,7 @@ func Sessions(sessions []SessionInfo, cursor int, t *theme.Theme, width, height 
 
 	if len(sessions) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(t.TextDim).Render(
-			"  No active tmux sessions.\n  Press enter on a worktree to create one."))
+			"  No active sessions.\n  Press enter on a worktree to create one."))
 		b.WriteString("\n\n")
 		b.WriteString(lipgloss.NewStyle().Foreground(t.TextDim).Render("esc: close"))
 

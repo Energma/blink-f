@@ -35,7 +35,7 @@ func Help(t *theme.Theme, width, height, scroll int) string {
 		}},
 		{"Worktrees", []keyBinding{
 			{"n", "Create new worktree"},
-			{"b", "Switch branch / checkout"},
+			{"b", "Switch branch (type to filter)"},
 			{"d", "Delete worktree"},
 			{"D", "Clean merged worktrees"},
 		}},
@@ -46,11 +46,11 @@ func Help(t *theme.Theme, width, height, scroll int) string {
 			{"s", "Stash changes"},
 		}},
 		{"Sessions & Tools", []keyBinding{
-			{"S", "Manage tmux sessions"},
+			{"S", "Manage sessions (tmux/rmx)"},
 			{"a", "Launch AI agent"},
 			{"Q", "Kill agent session"},
 			{"ctrl+q q", "Detach from session"},
-			{"ctrl+q e", "Open editor (tmux)"},
+			{"ctrl+q e", "Open editor (tmux only)"},
 			{"e", "Open editor in worktree"},
 		}},
 		{"Create Worktree", []keyBinding{
