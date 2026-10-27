@@ -76,7 +76,7 @@ func (s *Service) SwitchSession(ctx context.Context, name string) error {
 // KillSession kills a named session.
 func (s *Service) KillSession(ctx context.Context, name string) error {
 	if s.backend == BackendRmx {
-		return exec.CommandContext(ctx, "rmx", "close", name).Run()
+		return exec.CommandContext(ctx, s.bin, "close", name).Run()
 	}
 	return exec.CommandContext(ctx, "tmux", "kill-session", "-t", name).Run()
 }

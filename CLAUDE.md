@@ -8,9 +8,9 @@ Module: `github.com/Energma/blink-f`
 
 ## Build & Run
 ```bash
-go build -o blink ./cmd/blink/    # Build
+make build                        # Build rmx from ../rust-mux, embed it, build blink
+go build -o blink ./cmd/blink/    # Build without bundling (uses rmx/tmux from PATH)
 go run ./cmd/blink/               # Run directly
-make build                        # Build via Makefile
 make test                         # Run all tests
 make lint                         # Run golangci-lint
 ```
@@ -27,7 +27,7 @@ go test -v -run TestParseWorktree ./internal/git/  # Specific test
 - **CLI**: urfave/cli/v3 for subcommands
 - **Git**: CLI wrapper via os/exec (NOT go-git) — respects user's config, hooks, credentials
 - **Config**: YAML with 5-level cascade (flags > env > local > global > defaults)
-- **tmux / rmx**: Session management via os/exec (`multiplexer:` config picks the backend) — graceful degradation when unavailable
+- **rmx / tmux**: Session management via os/exec. rmx is the default and is embedded in the binary (`internal/rmxbin`, built from `../rust-mux` by `make rmx`); `multiplexer: tmux` switches backends — graceful degradation when unavailable
 
 ## Key Patterns
 - All git operations go through `internal/git/Service` with semaphore concurrency control
@@ -48,7 +48,8 @@ go test -v -run TestParseWorktree ./internal/git/  # Specific test
 - `cmd/blink/main.go` — CLI entry + subcommands
 - `internal/app/` — TUI application (Model, handlers, views)
 - `internal/git/` — Git CLI wrapper with semaphore
-- `internal/tmux/` — tmux session management
+- `internal/tmux/` — multiplexer session management (rmx + tmux)
+- `internal/rmxbin/` — embedded rmx binary, unpacked to the cache dir on first use
 - `internal/agent/` — AI agent provider registry (tool runner only)
 - `internal/config/` — YAML config with cascade
 - `internal/models/` — Shared data types

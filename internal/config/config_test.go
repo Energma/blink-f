@@ -62,7 +62,7 @@ func TestValidateMultiplexer(t *testing.T) {
 	}{
 		{"tmux", "tmux", "tmux", false},
 		{"rmx", "rmx", "rmx", false},
-		{"empty defaults to tmux", "", "tmux", false},
+		{"empty defaults to rmx", "", "rmx", false},
 		{"unknown rejected", "screen", "", true},
 	}
 	for _, tt := range tests {

@@ -82,13 +82,6 @@ func LaunchInPopup(ctx context.Context, tmuxSvc *tmux.Service, provider Provider
 	return tmuxSvc.DisplayPopup(ctx, cmdStr, workDir)
 }
 
-// LaunchInSession launches an agent in a new tmux session.
-func LaunchInSession(ctx context.Context, tmuxSvc *tmux.Service, provider Provider, sessionName, workDir string) error {
-	cmdStr := provider.CommandString(workDir)
-	args := []string{"new-session", "-d", "-s", sessionName, "-c", workDir, cmdStr}
-	return exec.CommandContext(ctx, "tmux", args...).Run()
-}
-
 // LaunchInSplitSession launches an agent in a new tmux session with a
 // horizontal split: top pane runs the agent, bottom pane is a shell.
 func LaunchInSplitSession(ctx context.Context, tmuxSvc *tmux.Service, provider Provider, sessionName, workDir string) error {

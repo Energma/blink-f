@@ -18,7 +18,7 @@ func Validate(cfg *Config) error {
 
 	switch cfg.Multiplexer {
 	case "":
-		cfg.Multiplexer = "tmux"
+		cfg.Multiplexer = "rmx"
 	case "tmux", "rmx":
 	default:
 		return fmt.Errorf("multiplexer %q: must be \"tmux\" or \"rmx\"", cfg.Multiplexer)
