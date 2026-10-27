@@ -155,7 +155,6 @@ become rmx workspaces with the same names. Differences from tmux:
   attaches from a plain terminal and you come back to blink when you detach (Leader `d`).
 - Agents get the whole window (no automatic agent/shell split); split by hand with Leader `-`.
 - `blink agent --popup` and the `ctrl+q` key table are tmux-only.
-- `blink serve` (remote control) always uses tmux.
 
 ## Features
 
