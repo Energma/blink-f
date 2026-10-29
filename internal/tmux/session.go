@@ -115,6 +115,12 @@ func SessionNameForWorktree(repoName, branch string) string {
 	return name
 }
 
+// AgentSessionNameForWorktree names the agent session, kept apart from the
+// plain one so a worktree can have a shell and an agent at the same time.
+func AgentSessionNameForWorktree(repoName, branch string) string {
+	return SessionNameForWorktree(repoName, branch) + "-agent"
+}
+
 // CreateAgentSplitSession creates a tmux session with the agent in the top
 // pane and an interactive shell in the bottom pane. Idempotent: if the
 // session already exists, it is reused. rmx can't split panes from its CLI,

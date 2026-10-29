@@ -79,6 +79,12 @@ type agentLaunchedMsg struct {
 	err       error
 }
 
+// sessionPickMsg opens the launcher because the worktree has no session yet.
+// shell adds a plain-shell entry alongside the agents.
+type sessionPickMsg struct {
+	shell bool
+}
+
 // agentSessionReturnedMsg is sent when the user returns from an agent tmux session.
 type agentSessionReturnedMsg struct{}
 

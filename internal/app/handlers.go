@@ -95,7 +95,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if m.tmuxAvailable {
 				m.switching = true
 				m.statusText = "Switching..."
-				return m, m.switchWorktreeCmd(*wt)
+				return m, m.openSessionCmd(*wt, false)
 			}
 		}
 
@@ -138,9 +138,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.screenMgr.Push(screen.Confirm)
 
 	case "a":
-		m.agentProviders, m.agentAvailable = m.sortedAgentProviders()
-		m.agentCursor = 0
-		m.screenMgr.Push(screen.AgentSelect)
+		return m, m.startAgent()
 
 	case "Q":
 		// Kill agent session for selected worktree
@@ -521,7 +519,7 @@ func (m *Model) handleAgentKey(key string) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.screenMgr.Pop()
 	case "j", "down":
-		if m.agentCursor < len(m.agentProviders)-1 {
+		if m.agentCursor < m.agentPickerLen()-1 {
 			m.agentCursor++
 		}
 	case "k", "up":
@@ -529,13 +527,49 @@ func (m *Model) handleAgentKey(key string) (tea.Model, tea.Cmd) {
 			m.agentCursor--
 		}
 	case "enter":
-		if m.agentCursor >= 0 && m.agentCursor < len(m.agentProviders) {
+		idx := m.agentCursor
+		if m.agentShell {
+			if idx == 0 {
+				wt := m.selectedWorktree()
+				if wt == nil {
+					return m, nil
+				}
+				m.screenMgr.Pop()
+				m.switching = true
+				m.statusText = "Switching..."
+				return m, m.switchWorktreeCmd(*wt)
+			}
+			idx--
+		}
+		if idx >= 0 && idx < len(m.agentProviders) {
 			m.switching = true
 			m.statusText = "Launching agent..."
-			return m, m.launchAgentCmd(m.agentProviders[m.agentCursor])
+			return m, m.launchAgentCmd(m.agentProviders[idx])
 		}
 	}
 	return m, nil
+}
+
+// agentPickerLen counts picker rows, including the plain-shell row when shown.
+func (m *Model) agentPickerLen() int {
+	if m.agentShell {
+		return len(m.agentProviders) + 1
+	}
+	return len(m.agentProviders)
+}
+
+// startAgent reopens the worktree's agent session when one is running and
+// only asks which agent to launch when there is none. Without a multiplexer
+// agents run in the foreground, so there is nothing to reopen.
+func (m *Model) startAgent() tea.Cmd {
+	wt := m.selectedWorktree()
+	if wt == nil || !m.tmuxAvailable {
+		m.openAgentPicker(false)
+		return nil
+	}
+	m.switching = true
+	m.statusText = "Switching..."
+	return m.openSessionCmd(*wt, true)
 }
 
 func (m *Model) handleConfirmKey(key string) (tea.Model, tea.Cmd) {
@@ -594,9 +628,7 @@ func (m *Model) handleDetailKey(key string) (tea.Model, tea.Cmd) {
 		// Launch agent from detail view
 		if m.selectedWorktree() != nil {
 			m.screenMgr.Pop()
-			m.agentProviders, m.agentAvailable = m.sortedAgentProviders()
-			m.agentCursor = 0
-			m.screenMgr.Push(screen.AgentSelect)
+			return m, m.startAgent()
 		}
 	case "c":
 		// Commit from detail view
