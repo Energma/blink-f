@@ -27,7 +27,7 @@ func Help(t *theme.Theme, width, height, scroll int) string {
 		{"Navigation", []keyBinding{
 			{"j/k, up/down", "Move cursor"},
 			{"g / G", "Jump to top / bottom"},
-			{"enter", "Switch to worktree session"},
+			{"enter", "Open worktree session (asks if none)"},
 			{"l / right", "Open detail view"},
 			{"tab", "Switch repository"},
 			{"/", "Filter worktrees"},
@@ -47,7 +47,7 @@ func Help(t *theme.Theme, width, height, scroll int) string {
 		}},
 		{"Sessions & Tools", []keyBinding{
 			{"S", "Manage sessions (tmux/rmx)"},
-			{"a", "Launch AI agent"},
+			{"a", "Open or launch AI agent"},
 			{"Q", "Kill agent session"},
 			{"ctrl+q q", "Detach from session"},
 			{"ctrl+q e", "Open editor (tmux only)"},

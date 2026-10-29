@@ -119,6 +119,33 @@ func (m *Model) switchWorktreeCmd(wt models.Worktree) tea.Cmd {
 	}
 }
 
+// openSessionCmd attaches to the session already running for wt. With none
+// running it asks for the launcher instead of guessing what to start, so the
+// user picks once and every later open lands back in that session.
+func (m *Model) openSessionCmd(wt models.Worktree, agentOnly bool) tea.Cmd {
+	return func() tea.Msg {
+		name := runningSession(m.tmux.SessionExists, filepath.Base(wt.RepoDir), wt.Branch, agentOnly)
+		if name == "" {
+			return sessionPickMsg{shell: !agentOnly}
+		}
+		return tmuxSessionCreatedMsg{sessionName: name}
+	}
+}
+
+// runningSession returns the session to reopen for a worktree, or "" when
+// none is running. The agent session wins over the plain one because it holds
+// the work in progress; agentOnly ignores the plain one, since `a` asks for an
+// agent and a bare shell is not that.
+func runningSession(exists func(string) bool, repoName, branch string, agentOnly bool) string {
+	if name := tmux.AgentSessionNameForWorktree(repoName, branch); exists(name) {
+		return name
+	}
+	if name := tmux.SessionNameForWorktree(repoName, branch); !agentOnly && exists(name) {
+		return name
+	}
+	return ""
+}
+
 // switchTmuxClientCmd moves the current client to another session (non-blocking).
 func (m *Model) switchTmuxClientCmd(name string) tea.Cmd {
 	return func() tea.Msg {
@@ -205,7 +232,7 @@ func (m *Model) launchAgentCmd(providerName string) tea.Cmd {
 			}
 		}
 
-		sessionID := tmux.SessionNameForWorktree(filepath.Base(wt.RepoDir), wt.Branch) + "-agent"
+		sessionID := tmux.AgentSessionNameForWorktree(filepath.Base(wt.RepoDir), wt.Branch)
 
 		if err = agent.LaunchInSplitSession(ctx, m.tmux, p, sessionID, wt.Path); err != nil {
 			return agentLaunchedMsg{err: err}

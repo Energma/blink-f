@@ -79,6 +79,7 @@ type Model struct {
 	agentCursor    int
 	agentProviders []string
 	agentAvailable []string
+	agentShell     bool // picker lists a plain shell first, offered when nothing runs yet
 
 	// Repo select
 	repoCursor int
@@ -347,6 +348,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return tmuxSessionReturnedMsg{}
 		})
 
+	case sessionPickMsg:
+		m.switching = false
+		m.statusText = ""
+		m.openAgentPicker(msg.shell)
+		return m, nil
+
 	case tmuxSessionReturnedMsg:
 		m.switching = false
 		return m, tea.Batch(m.checkTmuxCmd(), m.loadWorktreesCmd())
@@ -592,7 +599,7 @@ func (m *Model) View() tea.View {
 	case screen.Commit:
 		overlay = views.Commit(m.commitType, &m.commitScope, &m.commitMsg, m.commitField, m.cfg.Git.ConventionalCommits, m.commitFiles, m.theme, m.width)
 	case screen.AgentSelect:
-		overlay = views.AgentSelect(m.agentProviders, m.agentAvailable, m.agentCursor, m.theme, m.width)
+		overlay = views.AgentSelect(m.agentProviders, m.agentAvailable, m.agentShell, m.agentCursor, m.theme, m.width)
 	case screen.Confirm:
 		overlay = views.Confirm(m.confirmTitle, m.confirmMessage, m.theme, m.width)
 	case screen.RepoSelect:
@@ -679,22 +686,22 @@ func (m *Model) enrichTmuxStatus() {
 	}
 }
 
+// enrichAgentStatus rebuilds agent tracking from the live session list rather
+// than from what this process launched, so agents survive a blink restart.
 func (m *Model) enrichAgentStatus() {
-	// Check if agent sessions still exist
 	sessionSet := make(map[string]bool)
 	for _, s := range m.tmuxSessions {
 		sessionSet[s] = true
 	}
 
-	for branch, sid := range m.agentSessions {
-		if !sessionSet[sid] {
-			delete(m.agentSessions, branch)
-		}
-	}
-
+	m.agentSessions = make(map[string]string)
 	for i, wt := range m.worktrees {
-		_, hasAgent := m.agentSessions[wt.Branch]
-		m.worktrees[i].Status.AgentRunning = hasAgent
+		name := tmux.AgentSessionNameForWorktree(filepath.Base(wt.RepoDir), wt.Branch)
+		running := sessionSet[name]
+		if running {
+			m.agentSessions[wt.Branch] = name
+		}
+		m.worktrees[i].Status.AgentRunning = running
 	}
 }
 
@@ -723,6 +730,14 @@ func (m *Model) buildSessionInfos() {
 		}
 		m.sessionInfos = append(m.sessionInfos, info)
 	}
+}
+
+// openAgentPicker shows the launcher; shell adds a plain-shell entry on top.
+func (m *Model) openAgentPicker(shell bool) {
+	m.agentProviders, m.agentAvailable = m.sortedAgentProviders()
+	m.agentShell = shell
+	m.agentCursor = 0
+	m.screenMgr.Push(screen.AgentSelect)
 }
 
 func (m *Model) sortedAgentProviders() ([]string, []string) {

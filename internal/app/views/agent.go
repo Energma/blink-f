@@ -8,11 +8,17 @@ import (
 )
 
 // AgentSelect renders the agent provider picker.
-func AgentSelect(providers []string, available []string, selected int, t *theme.Theme, width int) string {
+// AgentSelect renders the launcher. shell puts a plain-shell row first, so
+// selected counts that row when it is shown.
+func AgentSelect(providers []string, available []string, shell bool, selected int, t *theme.Theme, width int) string {
+	heading := "Launch Agent"
+	if shell {
+		heading = "Start Session"
+	}
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(t.Primary).
-		Render("Launch Agent")
+		Render(heading)
 
 	avail := make(map[string]bool)
 	for _, a := range available {
@@ -23,7 +29,20 @@ func AgentSelect(providers []string, available []string, selected int, t *theme.
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
+	offset := 0
+	if shell {
+		offset = 1
+		cursor := "  "
+		name := lipgloss.NewStyle().Foreground(t.TextDim).Render("plain shell")
+		if selected == 0 {
+			cursor = lipgloss.NewStyle().Foreground(t.Primary).Render("> ")
+			name = lipgloss.NewStyle().Bold(true).Foreground(t.Text).Render("plain shell")
+		}
+		b.WriteString(cursor + name + "\n")
+	}
+
 	for i, p := range providers {
+		i += offset
 		cursor := "  "
 		if i == selected {
 			cursor = lipgloss.NewStyle().Foreground(t.Primary).Render("> ")
