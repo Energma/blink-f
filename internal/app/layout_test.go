@@ -23,7 +23,8 @@ func TestComputeLayout(t *testing.T) {
 		wantPreview   bool
 		wantUpperH    int
 	}{
-		{"narrow, preview requested", 100, 40, true, false, 17},
+		{"narrow, preview requested", 80, 40, true, false, 17},
+		{"laptop window shows preview", 98, 40, true, true, 17},
 		{"wide, preview off", 160, 45, false, false, 17},
 		{"wide, preview on", 160, 45, true, true, 17},
 		{"exactly at threshold", previewMinWidth, 30, true, true, 16},
@@ -167,7 +168,7 @@ func TestPreviewTickGuard(t *testing.T) {
 
 	// Narrow terminals and a missing multiplexer never start it.
 	m.previewOn = true
-	m.width = 100
+	m.width = previewMinWidth - 1
 	assert.Nil(t, m.previewCmd(""))
 	m.width = 160
 	m.tmuxAvailable = false
