@@ -85,6 +85,9 @@ blink config       # Open config in $EDITOR
 | `/` | Filter worktrees |
 | `r` | Refresh |
 
+Mouse: click a pane to focus it and a row to select it, double-click to act as `enter`, scroll to
+move the cursor, click the preview to attach to its session. Set `ui.mouse: false` to turn it off.
+
 ### Worktrees
 | Key | Action |
 |-----|--------|
@@ -156,6 +159,7 @@ git:
 ui:
   theme: default
   show_icons: true
+  mouse: true        # false leaves the mouse to the terminal (text selection)
 ```
 
 ### Environment Variables

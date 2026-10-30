@@ -52,6 +52,7 @@ func Help(t *theme.Theme, width, height, scroll int) string {
 			{"ctrl+q q", "Detach from session"},
 			{"ctrl+q e", "Open editor (tmux only)"},
 			{"e", "Open editor in worktree"},
+			{"v", "Toggle session preview (wide terminals)"},
 		}},
 		{"Create Worktree", []keyBinding{
 			{"tab", "Switch field"},

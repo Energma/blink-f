@@ -69,6 +69,19 @@ type tmuxSessionKilledMsg struct {
 	err  error
 }
 
+// previewCapturedMsg carries a capture of the session shown in the preview.
+// path is the worktree it was taken for, so a result that arrives after the
+// cursor moved on is dropped.
+type previewCapturedMsg struct {
+	path    string
+	session string
+	content string
+	err     error
+}
+
+// previewTickMsg drives the preview refresh loop.
+type previewTickMsg struct{}
+
 // --- Agent operations ---
 
 type agentLaunchedMsg struct {

@@ -2,6 +2,9 @@ package components
 
 import (
 	"fmt"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/Energma/blink-f/internal/app/screen"
 	"github.com/Energma/blink-f/internal/models"
@@ -95,99 +98,131 @@ const (
 	PaneFileTree
 )
 
-// PaneHints returns the action hints to render inside a pane footer.
-func PaneHints(t *theme.Theme, pane PaneID) string {
-	k := lipgloss.NewStyle().Foreground(t.Secondary).Bold(true)
-	d := lipgloss.NewStyle().Foreground(t.TextDim)
-	sep := d.Render(" | ")
-
-	h := func(binding, action string) string {
-		return k.Render(binding) + " " + d.Render(action)
-	}
-
-	var parts []string
-	switch pane {
-	case PaneWorktrees:
-		parts = []string{
-			h("n", "new"),
-			h("b", "branch"),
-			h("d", "delete"),
-			h("D", "clean"),
-			sep,
-			h("c", "commit"),
-			h("p", "push"),
-			h("u", "pull"),
-			h("s", "stash"),
-			sep,
-			h("e", "editor"),
-			h("a", "agent"),
-		}
-	case PaneFileTree:
-		parts = []string{
-			h("enter/l", "open"),
-			h("h", "collapse"),
-			h("bs", "up dir"),
-			h("f", "find"),
-		}
-	}
-
-	line := ""
-	for _, p := range parts {
-		if p == sep {
-			line += sep
-		} else {
-			if line != "" && line[len(line)-1] != '|' {
-				line += "  "
-			}
-			line += p
-		}
-	}
-	return line
+// Hint is one key hint, such as "n new". Key is what a click on the hint
+// presses; it is zero for hints that don't stand for a single key.
+type Hint struct {
+	Name  string // the key as shown, e.g. "C-down"
+	Label string
+	Key   tea.Key
 }
 
-// NavHints returns the single-line navigation/global hints between panes.
-func NavHints(t *theme.Theme, activeScreen screen.Type, activePane PaneID) string {
-	k := lipgloss.NewStyle().Foreground(t.Secondary).Bold(true)
+// HintSpan is where RenderHints drew a hint: cells [X0, X1) of line Line.
+type HintSpan struct {
+	Line   int
+	X0, X1 int
+	Hint   Hint
+}
+
+// charHint is a hint for a printable key, which is shown as itself.
+func charHint(r rune, label string) Hint {
+	return Hint{Name: string(r), Label: label, Key: tea.Key{Code: r, Text: string(r)}}
+}
+
+// keyHint is a hint for a special key, shown as name.
+func keyHint(name, label string, code rune, mod tea.KeyMod) Hint {
+	return Hint{Name: name, Label: label, Key: tea.Key{Code: code, Mod: mod}}
+}
+
+// textHint is a display-only hint covering several keys.
+func textHint(name, label string) Hint {
+	return Hint{Name: name, Label: label}
+}
+
+// RenderHints lays hints out in lines at most width cells wide, wrapping
+// between hints and never inside one; groups are set apart by " | ". The
+// spans are measured on the rendered cells in the same pass, so a click is
+// matched to the hint actually drawn under it. width <= 0 means one line.
+func RenderHints(t *theme.Theme, width int, groups ...[]Hint) (string, []HintSpan) {
+	// The key sits on a faint chip so it reads as something to press.
+	k := lipgloss.NewStyle().Foreground(t.Secondary).Background(t.Border).Bold(true)
 	d := lipgloss.NewStyle().Foreground(t.TextDim)
+	gap, sep := "  ", d.Render(" | ")
 
-	h := func(binding, action string) string {
-		return k.Render(binding) + " " + d.Render(action)
-	}
-
-	join := func(parts ...string) string {
-		out := ""
-		for i, p := range parts {
-			if i > 0 {
-				out += "  "
+	var lines []string
+	var spans []HintSpan
+	line, lineW := "", 0
+	for _, group := range groups {
+		for i, h := range group {
+			text := k.Render(h.Name) + " " + d.Render(h.Label)
+			w := lipgloss.Width(text)
+			prefix := ""
+			if lineW > 0 {
+				prefix = gap
+				if i == 0 {
+					prefix = sep
+				}
 			}
-			out += p
+			if lineW > 0 && width > 0 && lineW+lipgloss.Width(prefix)+w > width {
+				lines = append(lines, line)
+				line, lineW, prefix = "", 0, ""
+			}
+			x0 := lineW + lipgloss.Width(prefix)
+			line += prefix + text
+			lineW = x0 + w
+			spans = append(spans, HintSpan{Line: len(lines), X0: x0, X1: lineW, Hint: h})
 		}
-		return out
+	}
+	lines = append(lines, line)
+	return strings.Join(lines, "\n"), spans
+}
+
+// PaneHints returns the action hints shown at the bottom of a pane, in
+// groups of related actions.
+func PaneHints(pane PaneID) [][]Hint {
+	switch pane {
+	case PaneWorktrees:
+		return [][]Hint{
+			{charHint('n', "new"), charHint('b', "branch"), charHint('d', "delete"), charHint('D', "clean")},
+			{charHint('c', "commit"), charHint('p', "push"), charHint('u', "pull"), charHint('s', "stash")},
+			{charHint('e', "editor"), charHint('a', "agent")},
+		}
+	case PaneFileTree:
+		return [][]Hint{{
+			keyHint("enter/l", "open", tea.KeyEnter, 0),
+			charHint('h', "collapse"),
+			keyHint("bs", "up dir", tea.KeyBackspace, 0),
+			charHint('f', "find"),
+		}}
+	}
+	return nil
+}
+
+// NavHints returns the navigation/global hints shown between the panes.
+func NavHints(activeScreen screen.Type, activePane PaneID) []Hint {
+	enter := keyHint("enter", "", tea.KeyEnter, 0)
+	esc := keyHint("esc", "", tea.KeyEscape, 0)
+	tab := keyHint("tab", "field", tea.KeyTab, 0)
+	with := func(h Hint, label string) Hint {
+		h.Label = label
+		return h
 	}
 
 	switch activeScreen {
 	case screen.WorktreeCreate:
-		return join(h("tab", "field"), h("C-b", "branches"), h("enter", "create"), h("esc", "cancel"))
+		return []Hint{tab, keyHint("C-b", "branches", 'b', tea.ModCtrl), with(enter, "create"), with(esc, "cancel")}
 	case screen.BranchSelect:
-		return join(h("type", "filter"), h("↑/↓", "move"), h("enter", "select"), h("esc", "clear/cancel"))
+		return []Hint{textHint("type", "filter"), textHint("↑/↓", "move"), with(enter, "select"), with(esc, "clear/cancel")}
 	case screen.Commit:
-		return join(h("tab", "field"), h("</>", "type"), h("enter", "commit"), h("esc", "cancel"))
+		return []Hint{tab, textHint("</>", "type"), with(enter, "commit"), with(esc, "cancel")}
 	case screen.Confirm:
-		return join(h("y", "confirm"), h("n", "cancel"), h("esc", "cancel"))
+		return []Hint{charHint('y', "confirm"), charHint('n', "cancel"), with(esc, "cancel")}
 	case screen.Help:
-		return join(h("j/k", "scroll"), h("g", "top"), h("esc", "close"))
+		return []Hint{textHint("j/k", "scroll"), charHint('g', "top"), with(esc, "close")}
 	case screen.AgentSelect:
-		return join(h("j/k", "move"), h("enter", "launch"), h("esc", "cancel"))
+		return []Hint{textHint("j/k", "move"), with(enter, "launch"), with(esc, "cancel")}
 	case screen.Sessions:
-		return join(h("j/k", "move"), h("enter", "attach"), h("x", "kill"), h("X", "clean"), h("esc", "close"))
+		return []Hint{textHint("j/k", "move"), with(enter, "attach"), charHint('x', "kill"), charHint('X', "clean"), with(esc, "close")}
 	case screen.RepoSelect:
-		return join(h("j/k", "move"), h("enter", "select"), h("esc", "cancel"))
+		return []Hint{textHint("j/k", "move"), with(enter, "select"), with(esc, "cancel")}
 	case screen.WorktreeDetail:
-		return join(h("e", "editor"), h("a", "agent"), h("b", "branch"), h("c", "commit"), h("p", "push"), h("esc", "back"))
-	default:
-		if activePane == PaneFileTree {
-			return join(h("C-up", "worktrees"), h("/", "filter wt"), h("?", "help"), h("q", "quit"))
-		}
-		return join(h("enter", "switch"), h("l", "detail"), h("tab", "repo"), h("/", "filter"), h("S", "sessions"), h("C-down", "browse"), h("?", "help"), h("q", "quit"))
+		return []Hint{charHint('e', "editor"), charHint('a', "agent"), charHint('b', "branch"), charHint('c', "commit"), charHint('p', "push"), with(esc, "back")}
+	}
+	if activePane == PaneFileTree {
+		return []Hint{keyHint("C-up", "worktrees", tea.KeyUp, tea.ModCtrl), charHint('/', "filter wt"), charHint('?', "help"), charHint('q', "quit")}
+	}
+	return []Hint{
+		with(enter, "switch"), charHint('l', "detail"), keyHint("tab", "repo", tea.KeyTab, 0), charHint('/', "filter"),
+		charHint('S', "sessions"), charHint('v', "preview"), keyHint("C-down", "browse", tea.KeyDown, tea.ModCtrl),
+		charHint('?', "help"), charHint('q', "quit"),
 	}
 }

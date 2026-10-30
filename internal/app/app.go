@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Energma/blink-f/internal/agent"
 	"github.com/Energma/blink-f/internal/app/components"
@@ -119,6 +121,19 @@ type Model struct {
 	// Help scroll
 	helpScroll int
 
+	// Session preview pane. previewOn is the user's toggle; the pane also
+	// needs a wide terminal and no modal open (see previewVisible).
+	previewOn      bool
+	previewTicking bool   // a previewTickMsg is in flight; keeps one refresh loop
+	previewPath    string // worktree the content below was captured for
+	previewSession string
+	previewContent string
+	previewErr     error
+
+	// Last left click, to detect a double-click.
+	lastClick   clickTarget
+	lastClickAt time.Time
+
 	// Status
 	statusText string
 	errText    string
@@ -184,6 +199,7 @@ func New(cfg *config.Config) *Model {
 		screenMgr:     screen.NewManager(),
 		agentSessions: make(map[string]string),
 		treeRoot:      treeRoot,
+		previewOn:     true,
 	}
 }
 
@@ -198,7 +214,15 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// Update handles msg, then keeps the session preview in step with whatever
+// changed: the selection, the screen, the terminal size or the toggle.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	before := m.previewTarget()
+	model, cmd := m.update(msg)
+	return model, tea.Batch(cmd, m.previewCmd(before))
+}
+
+func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -415,6 +439,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		return m, tea.Batch(m.loadWorktreesCmd(), m.checkTmuxCmd(), m.tickCmd())
 
+	case previewTickMsg:
+		// Update's previewCmd captures again and re-arms the tick while the
+		// preview is still visible; otherwise the loop ends here.
+		m.previewTicking = false
+		return m, nil
+
+	case previewCapturedMsg:
+		if msg.path != m.previewTarget() {
+			return m, nil
+		}
+		m.previewPath = msg.path
+		m.previewSession = msg.session
+		m.previewContent = msg.content
+		m.previewErr = msg.err
+		return m, nil
+
 	case clearStatusMsg:
 		m.statusText = ""
 		m.errText = ""
@@ -450,6 +490,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
+
+	case tea.MouseClickMsg:
+		return m.handleMouseClick(tea.Mouse(msg), time.Now())
+
+	case tea.MouseWheelMsg:
+		return m.handleMouseWheel(tea.Mouse(msg))
 	}
 
 	return m, nil
@@ -471,123 +517,23 @@ func (m *Model) View() tea.View {
 	// Stats
 	stats := components.ComputeStats(m.worktrees)
 
-	// Navigation hints (between panes)
-	hints := components.NavHints(m.theme, m.screenMgr.Active(), components.PaneID(m.activePane))
-	// Pane-specific action hints (inside panes)
-	upperPaneHints := components.PaneHints(m.theme, components.PaneWorktrees)
-	lowerPaneHints := components.PaneHints(m.theme, components.PaneFileTree)
+	l := m.layout()
+
+	// Navigation hints (between panes, or above the status bar with the preview)
+	hints, _ := m.navHints(l.Hints)
 
 	// Status bar
 	statusBar := components.StatusBar(
-		m.width, m.theme, repoName,
+		l.Status.W, m.theme, repoName,
 		stats, m.tmuxAvailable,
 		m.screenMgr.Active(), m.statusText, m.errText,
 	)
 
-	// Calculate pane heights
-	// Reserve lines for hints + statusbar + padding
-	hintsHeight := 1
-	statusHeight := 1
-	padding := 2
-	reservedHeight := hintsHeight + statusHeight + padding
-	availableHeight := m.height - reservedHeight
-	if availableHeight < 10 {
-		availableHeight = 10
-	}
+	upperContent, _, _ := m.dashboard(l.Worktrees)
+	lowerContent, _, _ := m.fileTree(l.FileTree)
 
-	// 60/40 split — upper pane keeps its size even with overlay
-	// Upper pane sized for ~5 visible worktree items, rest goes to lower pane
-	maxUpperHeight := 17 // fits 5 items (2 lines each) + header + scroll indicators + border
-	upperHeight := availableHeight * 60 / 100
-	if upperHeight > maxUpperHeight {
-		upperHeight = maxUpperHeight
-	}
-	lowerHeight := availableHeight - upperHeight
-
-	// Content height inside bordered panes (border takes 2 lines)
-	upperContentHeight := upperHeight - 2
-	lowerContentHeight := lowerHeight - 2
-	if upperContentHeight < 3 {
-		upperContentHeight = 3
-	}
-	if lowerContentHeight < 3 {
-		lowerContentHeight = 3
-	}
-
-	contentWidth := m.width - 4 // padding from App style + border
-	if contentWidth < 20 {
-		contentWidth = 20
-	}
-
-	// Upper pane: worktree dashboard
-	upperContent := views.Dashboard(
-		m.worktrees,
-		m.filteredIndices,
-		m.cursor,
-		m.filterText,
-		m.filterMode,
-		m.activePane == PaneWorktrees,
-		upperPaneHints,
-		m.theme,
-		contentWidth,
-		upperContentHeight,
-	)
-
-	// Lower pane: file tree
-	var treeMatchIndices []int
-	if m.treeFilterText != "" {
-		treeMatchIndices = components.FilterFlatNodes(m.treeFlatNodes, m.treeFilterText)
-	}
-	lowerContent := views.FileTree(
-		m.treeFlatNodes,
-		m.treeCursor,
-		m.activePane == PaneFileTree,
-		m.treeFilterMode,
-		m.treeFilterText,
-		treeMatchIndices,
-		lowerPaneHints,
-		m.theme,
-		contentWidth,
-		lowerContentHeight,
-	)
-
-	// Border colors based on focus
-	upperBorderColor := m.theme.Border
-	lowerBorderColor := m.theme.Border
-	upperTitle := " Worktrees "
-	lowerTitle := " Browse: " + m.treeRoot.Path + " "
-	if m.activePane == PaneWorktrees {
-		upperBorderColor = m.theme.Primary
-	} else {
-		lowerBorderColor = m.theme.Primary
-	}
-
-	upperPane := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(upperBorderColor).
-		BorderTop(true).
-		BorderBottom(true).
-		BorderLeft(true).
-		BorderRight(true).
-		Width(m.width - 2).
-		Height(upperContentHeight).
-		Render(upperContent)
-
-	// Inject title into border
-	upperPane = injectBorderTitle(upperPane, upperTitle, m.theme, m.activePane == PaneWorktrees)
-
-	lowerPane := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lowerBorderColor).
-		BorderTop(true).
-		BorderBottom(true).
-		BorderLeft(true).
-		BorderRight(true).
-		Width(m.width - 2).
-		Height(lowerContentHeight).
-		Render(lowerContent)
-
-	lowerPane = injectBorderTitle(lowerPane, lowerTitle, m.theme, m.activePane == PaneFileTree)
+	upperPane := m.renderPane(l.Worktrees, " Worktrees ", upperContent, m.activePane == PaneWorktrees)
+	lowerPane := m.renderPane(l.FileTree, " Browse: "+m.treeRoot.Path+" ", lowerContent, m.activePane == PaneFileTree)
 
 	// Check for overlay modal — replaces lower pane when active
 	overlay := ""
@@ -616,9 +562,15 @@ func (m *Model) View() tea.View {
 	}
 
 	var content string
-	if overlay != "" {
+	switch {
+	case overlay != "":
 		content = lipgloss.JoinVertical(lipgloss.Left, upperPane, hints, overlay)
-	} else {
+	case l.Preview.W > 0:
+		previewPane := m.renderPane(l.Preview, m.previewTitle(), m.previewBody(l.Preview.W-2, l.Preview.H-2), false)
+		left := lipgloss.JoinVertical(lipgloss.Left, upperPane, lowerPane)
+		content = lipgloss.JoinVertical(lipgloss.Left,
+			lipgloss.JoinHorizontal(lipgloss.Top, left, previewPane), hints)
+	default:
 		content = lipgloss.JoinVertical(lipgloss.Left, upperPane, hints, lowerPane)
 	}
 
@@ -630,10 +582,90 @@ func (m *Model) View() tea.View {
 	v := tea.NewView(rendered)
 	v.AltScreen = true
 	v.ReportFocus = true
+	if m.cfg.UI.Mouse {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 	return v
 }
 
+// layout is where View puts each pane; mouse hit-testing reads it too.
+func (m *Model) layout() layout {
+	return computeLayout(m.width, m.height, m.previewVisible())
+}
+
+// navHints renders the nav hints line for r, with where each hint is drawn.
+// Hints that don't fit are dropped whole rather than cut mid-word, so every
+// hint on screen can be clicked.
+func (m *Model) navHints(r rect) (string, []components.HintSpan) {
+	all, spans := components.RenderHints(m.theme, r.W, components.NavHints(m.screenMgr.Active(), components.PaneID(m.activePane)))
+	line, _, _ := strings.Cut(all, "\n")
+	var shown []components.HintSpan
+	for _, s := range spans {
+		if s.Line == 0 {
+			shown = append(shown, s)
+		}
+	}
+	// A single hint wider than the line would still overflow it.
+	return ansi.Truncate(line, r.W, ""), shown
+}
+
+// dashboard renders the worktree pane's content for r, along with the item
+// on each content line and where the pane hints are (see views.Dashboard).
+// View and mouse clicks share it so a click lands on what is drawn there.
+func (m *Model) dashboard(r rect) (string, []int, []components.HintSpan) {
+	return views.Dashboard(
+		m.worktrees,
+		m.filteredIndices,
+		m.cursor,
+		m.filterText,
+		m.filterMode,
+		m.activePane == PaneWorktrees,
+		components.PaneHints(components.PaneWorktrees),
+		m.theme,
+		r.W-2,
+		r.H-2,
+	)
+}
+
+// fileTree renders the file tree pane's content for r, like dashboard.
+func (m *Model) fileTree(r rect) (string, []int, []components.HintSpan) {
+	var matchIndices []int
+	if m.treeFilterText != "" {
+		matchIndices = components.FilterFlatNodes(m.treeFlatNodes, m.treeFilterText)
+	}
+	return views.FileTree(
+		m.treeFlatNodes,
+		m.treeCursor,
+		m.activePane == PaneFileTree,
+		m.treeFilterMode,
+		m.treeFilterText,
+		matchIndices,
+		components.PaneHints(components.PaneFileTree),
+		m.theme,
+		r.W-2,
+		r.H-2,
+	)
+}
+
+// renderPane draws a bordered pane that fills r exactly, clipping content
+// that doesn't fit so the rect stays the pane's true on-screen size.
+func (m *Model) renderPane(r rect, title, content string, focused bool) string {
+	borderColor := m.theme.Border
+	if focused {
+		borderColor = m.theme.Primary
+	}
+	pane := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Width(r.W).
+		Height(r.H).
+		Render(fitLines(content, r.W-2, r.H-2))
+	return injectBorderTitle(pane, title, m.theme, focused)
+}
+
 // injectBorderTitle replaces the start of the top border line with a title.
+// The border line is styled, so it is cut by cell width, never by rune or
+// byte, or the colour escapes would be split.
 func injectBorderTitle(rendered, title string, t *theme.Theme, focused bool) string {
 	lines := strings.SplitN(rendered, "\n", 2)
 	if len(lines) < 2 {
@@ -644,21 +676,18 @@ func injectBorderTitle(rendered, title string, t *theme.Theme, focused bool) str
 	if focused {
 		titleColor = t.Primary
 	}
-	styledTitle := lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render(title)
 
-	// Replace characters after the first border rune
+	// Keep the first corner and at least one border cell before the other.
 	topLine := lines[0]
-	runes := []rune(topLine)
-	if len(runes) > 2 {
-		// Keep first rune (corner), insert title, continue border
-		titleWidth := len([]rune(title))
-		if titleWidth+2 < len(runes) {
-			newTop := string(runes[0:1]) + styledTitle + string(runes[1+titleWidth:])
-			return newTop + "\n" + lines[1]
-		}
+	room := ansi.StringWidth(topLine) - 3
+	if room <= 0 {
+		return rendered
 	}
-
-	return rendered
+	title = ansi.Truncate(title, room, "")
+	styledTitle := lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render(title)
+	titleWidth := ansi.StringWidth(title)
+	newTop := ansi.Truncate(topLine, 1, "") + styledTitle + ansi.TruncateLeft(topLine, 1+titleWidth, "")
+	return newTop + "\n" + lines[1]
 }
 
 // --- Helper methods ---

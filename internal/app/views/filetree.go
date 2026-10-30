@@ -9,9 +9,12 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// FileTree renders the directory tree browser pane.
-func FileTree(nodes []*components.TreeNode, cursor int, focused bool, filterMode bool, filterText string, matchIndices []int, paneHints string, t *theme.Theme, width, height int) string {
+// FileTree renders the directory tree browser pane. rows[i] is the index in
+// nodes of the node drawn on line i, or -1, and hints says where each pane
+// hint is drawn, as for Dashboard.
+func FileTree(nodes []*components.TreeNode, cursor int, focused bool, filterMode bool, filterText string, matchIndices []int, paneHints [][]components.Hint, t *theme.Theme, width, height int) (string, []int, []components.HintSpan) {
 	var b strings.Builder
+	var rows []int
 
 	// Filter bar
 	if filterMode {
@@ -23,7 +26,6 @@ func FileTree(nodes []*components.TreeNode, cursor int, focused bool, filterMode
 			b.WriteString(lipgloss.NewStyle().Foreground(t.Warning).Render("  no matches"))
 		}
 		b.WriteString("\n")
-		height-- // filter bar takes a line
 	}
 
 	if len(nodes) == 0 {
@@ -32,7 +34,7 @@ func FileTree(nodes []*components.TreeNode, cursor int, focused bool, filterMode
 			Padding(1, 2).
 			Render("Loading directory tree...")
 		b.WriteString(empty)
-		return b.String()
+		return b.String(), rows, nil
 	}
 
 	// Build match set for highlighting
@@ -41,20 +43,20 @@ func FileTree(nodes []*components.TreeNode, cursor int, focused bool, filterMode
 		matchSet[idx] = true
 	}
 
-	maxVisible := height
-	if maxVisible < 3 {
-		maxVisible = 3
-	}
+	footer, hints := paneFooter(focused, paneHints, t, width)
 
-	// Calculate scroll window
-	start := 0
-	if cursor >= maxVisible {
-		start = cursor - maxVisible + 1
+	// A long name can wrap a node onto a second line, so measure each.
+	lines := make([]string, len(nodes))
+	node := func(i int) string {
+		if lines[i] == "" {
+			lines[i] = renderTreeNode(nodes[i], i == cursor, focused, matchSet[i], t, width)
+		}
+		return lines[i]
 	}
-	end := start + maxVisible
-	if end > len(nodes) {
-		end = len(nodes)
-	}
+	avail := height - lineCount(&b) - footerHeight(footer)
+	start, end := scrollWindow(len(nodes), cursor, avail, func(i int) int {
+		return lipgloss.Height(node(i))
+	})
 
 	// Scroll indicator top
 	if start > 0 {
@@ -62,46 +64,21 @@ func FileTree(nodes []*components.TreeNode, cursor int, focused bool, filterMode
 		b.WriteString("\n")
 	}
 
-	for vi, node := range nodes[start:end] {
-		globalIdx := start + vi
-		selected := globalIdx == cursor
-		isMatch := matchSet[globalIdx]
-		b.WriteString(renderTreeNode(node, selected, focused, isMatch, t, width))
-		if start+vi < end-1 {
-			b.WriteString("\n")
-		}
+	rows = markRows(rows, lineCount(&b), -1)
+	for i := start; i < end; i++ {
+		b.WriteString(node(i))
+		b.WriteString("\n")
+		rows = markRows(rows, lineCount(&b), i)
 	}
 
 	// Scroll indicator bottom
 	if end < len(nodes) {
-		b.WriteString("\n")
 		b.WriteString(lipgloss.NewStyle().Foreground(t.TextDim).Render(fmt.Sprintf("  ... %d more below", len(nodes)-end)))
+		b.WriteString("\n")
 	}
 
-	// Pane action hints pinned to bottom
-	if focused && paneHints != "" {
-		usedLines := end - start
-		if filterMode {
-			usedLines++
-		}
-		if start > 0 {
-			usedLines++
-		}
-		if end < len(nodes) {
-			usedLines++
-		}
-		remaining := height - usedLines - 2
-		for i := 0; i < remaining; i++ {
-			b.WriteString("\n")
-		}
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(t.Border).
-			Render(strings.Repeat("─", min(width-2, 80))))
-		b.WriteString("\n")
-		b.WriteString(paneHints)
-	}
-
-	return b.String()
+	hints = pinFooter(&b, footer, hints, t, width, height)
+	return strings.TrimSuffix(b.String(), "\n"), rows, hints
 }
 
 func renderTreeNode(node *components.TreeNode, selected, paneFocused, isMatch bool, t *theme.Theme, width int) string {
