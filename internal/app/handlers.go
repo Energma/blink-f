@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
@@ -70,6 +71,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleTreeFilterKey(msg)
 	}
 
+	// Works from either pane; below the tree filter so "v" can be typed there.
+	if key == "v" {
+		m.previewOn = !m.previewOn
+		if m.previewOn && m.width < previewMinWidth {
+			m.statusText = fmt.Sprintf("Preview needs a terminal at least %d columns wide", previewMinWidth)
+			return m, m.clearStatusCmd()
+		}
+		return m, nil
+	}
+
 	// Pane-specific keys
 	if m.activePane == PaneFileTree {
 		return m.handleTreeKey(key)
@@ -91,13 +102,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cursor = max(0, len(m.filteredIndices)-1)
 
 	case "enter":
-		if wt := m.selectedWorktree(); wt != nil {
-			if m.tmuxAvailable {
-				m.switching = true
-				m.statusText = "Switching..."
-				return m, m.openSessionCmd(*wt, false)
-			}
-		}
+		return m, m.openSelected()
 
 	case "l", "right":
 		if wt := m.selectedWorktree(); wt != nil {
@@ -202,6 +207,18 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// openSelected attaches to the selected worktree's session, starting one if
+// needed: what enter does on the worktree list.
+func (m *Model) openSelected() tea.Cmd {
+	wt := m.selectedWorktree()
+	if wt == nil || !m.tmuxAvailable {
+		return nil
+	}
+	m.switching = true
+	m.statusText = "Switching..."
+	return m.openSessionCmd(*wt, false)
 }
 
 // --- File tree handler ---

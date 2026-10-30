@@ -26,6 +26,8 @@ func TestDefault(t *testing.T) {
 	assert.True(t, cfg.Git.ConventionalCommits)
 	assert.False(t, cfg.Git.AutoPush)
 
+	assert.True(t, cfg.UI.Mouse)
+
 	assert.Equal(t, "n", cfg.Keys.NewWorktree)
 	assert.Equal(t, "q", cfg.Keys.Quit)
 }

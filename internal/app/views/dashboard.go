@@ -10,9 +10,13 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// Dashboard renders the main worktree list view.
-func Dashboard(worktrees []models.Worktree, filteredIndices []int, cursor int, filterText string, filterMode bool, focused bool, paneHints string, t *theme.Theme, width, height int) string {
+// Dashboard renders the main worktree list view. rows[i] is the position in
+// filteredIndices of the item drawn on line i, or -1, and hints says where
+// each pane hint is drawn; both come from the same pass that lays the lines
+// out, so a mouse click maps to what is on screen.
+func Dashboard(worktrees []models.Worktree, filteredIndices []int, cursor int, filterText string, filterMode bool, focused bool, paneHints [][]components.Hint, t *theme.Theme, width, height int) (string, []int, []components.HintSpan) {
 	var b strings.Builder
+	var rows []int
 
 	// Header
 	header := lipgloss.NewStyle().
@@ -46,7 +50,7 @@ func Dashboard(worktrees []models.Worktree, filteredIndices []int, cursor int, f
 			Padding(2, 4).
 			Render("No worktrees found.\nPress 'n' to create one, or configure repos in ~/.config/blink/config.yaml")
 		b.WriteString(empty)
-		return b.String()
+		return b.String(), rows, nil
 	}
 
 	// No filter matches
@@ -56,24 +60,23 @@ func Dashboard(worktrees []models.Worktree, filteredIndices []int, cursor int, f
 			Padding(1, 4).
 			Render(fmt.Sprintf("No worktrees matching %q", filterText))
 		b.WriteString(noMatch)
-		return b.String()
+		return b.String(), rows, nil
 	}
 
-	// Worktree list
-	maxVisible := height - 8 // Reserve space for header, status bar, hints
-	if maxVisible < 3 {
-		maxVisible = 3
-	}
+	footer, hints := paneFooter(focused, paneHints, t, width)
 
-	// Calculate scroll window
-	start := 0
-	if cursor >= maxVisible {
-		start = cursor - maxVisible + 1
+	// Items are two or three lines tall, so the window is sized in lines.
+	items := make([]string, len(filteredIndices))
+	item := func(i int) string {
+		if items[i] == "" {
+			items[i] = components.WorktreeItem(worktrees[filteredIndices[i]], i == cursor, t, width-4)
+		}
+		return items[i]
 	}
-	end := start + maxVisible
-	if end > len(filteredIndices) {
-		end = len(filteredIndices)
-	}
+	avail := height - lineCount(&b) - footerHeight(footer)
+	start, end := scrollWindow(len(filteredIndices), cursor, avail, func(i int) int {
+		return lipgloss.Height(item(i))
+	})
 
 	// Scroll indicator top
 	if start > 0 {
@@ -81,10 +84,11 @@ func Dashboard(worktrees []models.Worktree, filteredIndices []int, cursor int, f
 		b.WriteString("\n")
 	}
 
-	for vi, idx := range filteredIndices[start:end] {
-		selected := (start + vi) == cursor
-		b.WriteString(components.WorktreeItem(worktrees[idx], selected, t, width-4))
+	rows = markRows(rows, lineCount(&b), -1)
+	for i := start; i < end; i++ {
+		b.WriteString(item(i))
 		b.WriteString("\n")
+		rows = markRows(rows, lineCount(&b), i)
 	}
 
 	// Scroll indicator bottom
@@ -93,31 +97,102 @@ func Dashboard(worktrees []models.Worktree, filteredIndices []int, cursor int, f
 		b.WriteString("\n")
 	}
 
-	// Pane action hints pinned to bottom
-	if focused && paneHints != "" {
-		// Pad to push hints to the bottom of the pane
-		usedLines := 3 // header + sep + current line
-		if filterMode {
-			usedLines++
+	hints = pinFooter(&b, footer, hints, t, width, height)
+	return strings.TrimSuffix(b.String(), "\n"), rows, hints
+}
+
+// scrollWindow picks the items [start, end) to draw in avail lines, where
+// item i is height(i) lines tall and a "more above/below" line is drawn when
+// items are cut off at either end. The cursor's item is always drawn whole,
+// with as many items above it as fit, so the list scrolls once the cursor
+// would leave the bottom.
+func scrollWindow(n, cursor, avail int, height func(int) int) (start, end int) {
+	if n == 0 {
+		return 0, 0
+	}
+	cursor = max(0, min(cursor, n-1))
+	used := height(cursor)
+	if cursor < n-1 {
+		used++ // more below
+	}
+	start = cursor
+	for start > 0 {
+		above := 0
+		if start-1 > 0 {
+			above = 1
 		}
-		listLines := end - start
-		usedLines += listLines
-		if start > 0 {
-			usedLines++
+		if above+used+height(start-1) > avail {
+			break
 		}
-		if end < len(filteredIndices) {
-			usedLines++
-		}
-		remaining := height - usedLines - 1
-		for i := 0; i < remaining; i++ {
-			b.WriteString("\n")
-		}
-		b.WriteString(lipgloss.NewStyle().Foreground(t.Border).
-			Render(strings.Repeat("─", min(width-2, 80))))
-		b.WriteString("\n")
-		b.WriteString(paneHints)
+		start--
+		used += height(start)
 	}
 
-	return b.String()
+	used = 0
+	if start > 0 {
+		used = 1
+	}
+	for end = start; end < n; end++ {
+		below := 0
+		if end+1 < n {
+			below = 1
+		}
+		if end > cursor && used+height(end)+below > avail {
+			break
+		}
+		used += height(end)
+	}
+	return start, end
+}
+
+// paneFooter renders a focused pane's action hints, wrapped to the pane
+// width so none is cut off; "" when the pane shows none.
+func paneFooter(focused bool, paneHints [][]components.Hint, t *theme.Theme, width int) (string, []components.HintSpan) {
+	if !focused || len(paneHints) == 0 {
+		return "", nil
+	}
+	return components.RenderHints(t, width, paneHints...)
+}
+
+// footerHeight is the lines a footer takes, its rule included.
+func footerHeight(footer string) int {
+	if footer == "" {
+		return 0
+	}
+	return 1 + lipgloss.Height(footer)
+}
+
+// pinFooter pads b so the footer ends on the pane's last line, then draws a
+// rule and the footer, and moves the hint spans onto the lines they landed
+// on. b must end on a finished line.
+func pinFooter(b *strings.Builder, footer string, hints []components.HintSpan, t *theme.Theme, width, height int) []components.HintSpan {
+	if footer == "" {
+		return nil
+	}
+	for lineCount(b) < height-footerHeight(footer) {
+		b.WriteString("\n")
+	}
+	b.WriteString(lipgloss.NewStyle().Foreground(t.Border).
+		Render(strings.Repeat("─", min(width-2, 80))))
+	b.WriteString("\n")
+	top := lineCount(b)
+	b.WriteString(footer)
+	for i := range hints {
+		hints[i].Line += top
+	}
+	return hints
+}
+
+// markRows extends rows to cover n lines, giving each new line item.
+func markRows(rows []int, n, item int) []int {
+	for len(rows) < n {
+		rows = append(rows, item)
+	}
+	return rows
+}
+
+// lineCount is the number of finished lines in b.
+func lineCount(b *strings.Builder) int {
+	return strings.Count(b.String(), "\n")
 }
 

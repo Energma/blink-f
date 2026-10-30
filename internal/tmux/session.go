@@ -172,3 +172,22 @@ func (s *Service) EnsureSession(ctx context.Context, repoName, branch, dir strin
 	}
 	return name, nil
 }
+
+// CapturePane returns the visible screen of a session's active pane. tmux
+// keeps the colours (-e); rmx prints plain text.
+func (s *Service) CapturePane(ctx context.Context, name string) (string, error) {
+	if !s.available {
+		return "", fmt.Errorf("%s not available", s.backend)
+	}
+	var cmd *exec.Cmd
+	if s.backend == BackendRmx {
+		cmd = exec.CommandContext(ctx, s.bin, "capture", "--target", name)
+	} else {
+		cmd = exec.CommandContext(ctx, "tmux", "capture-pane", "-p", "-e", "-t", name)
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("capture %s: %w", name, err)
+	}
+	return string(out), nil
+}

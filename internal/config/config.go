@@ -67,6 +67,9 @@ type EditorConfig struct {
 type UIConfig struct {
 	Theme     string `yaml:"theme"`
 	ShowIcons bool   `yaml:"show_icons"`
+	// Mouse lets clicks and the wheel drive the panes. Turning it off hands
+	// the mouse back to the terminal, for its own text selection.
+	Mouse bool `yaml:"mouse"`
 }
 
 type KeyConfig struct {
@@ -117,6 +120,7 @@ func Default() *Config {
 		UI: UIConfig{
 			Theme:     "default",
 			ShowIcons: true,
+			Mouse:     true,
 		},
 		Keys: KeyConfig{
 			NewWorktree:    "n",
