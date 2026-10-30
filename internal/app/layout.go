@@ -8,11 +8,13 @@ import (
 
 const (
 	// previewMinWidth is the narrowest terminal that still leaves the
-	// worktree list readable next to the preview pane.
-	previewMinWidth = 120
+	// worktree list readable next to a preview wide enough to tell what an
+	// agent is doing. Kept low enough for a half-screen or laptop window,
+	// where the preview is most useful.
+	previewMinWidth = 90
 	// leftMinWidth keeps worktree rows legible when the preview takes the
 	// rest of a terminal just over previewMinWidth.
-	leftMinWidth   = 54
+	leftMinWidth   = 50
 	maxUpperHeight = 17 // fits 5 items (2 lines each) + header + scroll indicators + border
 	minPaneHeight  = 5  // border + 3 content lines
 	appPaddingX    = 1  // Styles.App pads one column on each side
