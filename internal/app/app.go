@@ -49,6 +49,7 @@ type Model struct {
 	activeRepo      int
 	cursor          int
 	filteredIndices []int
+	launchWorktree  string // worktree blink was started in, selected on first load
 
 	// Filter
 	filterText string
@@ -71,11 +72,11 @@ type Model struct {
 	branchForCreate bool   // true = pick base branch for create, false = checkout
 
 	// Commit form
-	commitType    int
-	commitScope   components.TextInput
-	commitMsg     components.TextInput
-	commitField   int // 0=type, 1=scope, 2=msg
-	commitFiles   []string
+	commitType  int
+	commitScope components.TextInput
+	commitMsg   components.TextInput
+	commitField int // 0=type, 1=scope, 2=msg
+	commitFiles []string
 
 	// Agent select
 	agentCursor    int
@@ -111,12 +112,12 @@ type Model struct {
 	agentSessions map[string]string
 
 	// Dual pane state
-	activePane      PaneID
-	treeRoot        *components.TreeNode
-	treeFlatNodes   []*components.TreeNode
-	treeCursor      int
-	treeFilterMode  bool
-	treeFilterText  string
+	activePane     PaneID
+	treeRoot       *components.TreeNode
+	treeFlatNodes  []*components.TreeNode
+	treeCursor     int
+	treeFilterMode bool
+	treeFilterText string
 
 	// Help scroll
 	helpScroll int
@@ -149,9 +150,11 @@ func New(cfg *config.Config) *Model {
 
 	// Auto-detect current directory as a repo
 	cwd, _ := os.Getwd()
+	var launchWorktree string
 	if gitSvc.IsGitRepo(context.Background(), cwd) {
 		root, _ := gitSvc.RepoRoot(context.Background(), cwd)
 		if root != "" {
+			launchWorktree = root
 			repos = append(repos, models.Repo{
 				Path:          root,
 				DefaultBranch: gitSvc.DefaultBranch(context.Background(), root),
@@ -189,17 +192,18 @@ func New(cfg *config.Config) *Model {
 	treeRoot := components.NewTreeRoot(treeRootPath)
 
 	return &Model{
-		git:           gitSvc,
-		tmux:          tmux.NewService(cfg),
-		agents:        agent.NewRegistry(cfg),
-		cfg:           cfg,
-		theme:         t,
-		styles:        s,
-		repos:         repos,
-		screenMgr:     screen.NewManager(),
-		agentSessions: make(map[string]string),
-		treeRoot:      treeRoot,
-		previewOn:     true,
+		git:            gitSvc,
+		tmux:           tmux.NewService(cfg),
+		agents:         agent.NewRegistry(cfg),
+		cfg:            cfg,
+		theme:          t,
+		styles:         s,
+		repos:          repos,
+		screenMgr:      screen.NewManager(),
+		agentSessions:  make(map[string]string),
+		treeRoot:       treeRoot,
+		previewOn:      true,
+		launchWorktree: launchWorktree,
 	}
 }
 
@@ -237,6 +241,12 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.worktrees = msg.worktrees
 		m.updateFilteredIndices()
+		// Only the first load follows the launch dir; later reloads keep the
+		// user's own selection.
+		if m.launchWorktree != "" {
+			m.selectWorktree(m.launchWorktree)
+			m.launchWorktree = ""
+		}
 		m.enrichTmuxStatus()
 		m.enrichAgentStatus()
 		return m, m.loadAllStatusesCmd()
@@ -696,6 +706,16 @@ func (m *Model) updateFilteredIndices() {
 	m.filteredIndices = components.FilterWorktrees(m.worktrees, m.filterText)
 	if m.cursor >= len(m.filteredIndices) {
 		m.cursor = max(0, len(m.filteredIndices)-1)
+	}
+}
+
+// selectWorktree moves the cursor to the listed worktree at path, if any.
+func (m *Model) selectWorktree(path string) {
+	for i, idx := range m.filteredIndices {
+		if m.worktrees[idx].Path == path {
+			m.cursor = i
+			return
+		}
 	}
 }
 
